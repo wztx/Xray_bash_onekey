@@ -58,7 +58,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/hello-yunshu/Xray_bash_oneke
 | Nginx + TLS | ws/gRPC/xHTTP را پشتیبانی کنید، به طور خودکار برای گواهی Let's Encrypt درخواست و تمدید کنید |
 | ws/gRPC/xHTTP ONLY | حالت ورودی مستقل بدون TLS، عمدتاً در سناریوهای باطن یا تعادل بار استفاده می شود |
 | XTLS ONLY | فقط در سناریوهای خاص مانند انتقال ترافیک استفاده می شود |
-| Docker | 镜像内预装 Xray、Nginx 与主脚本 |
+| Docker | Xray، Nginx و اسکریپت اصلی در تصویر از قبل نصب شده اند. |
 
 هنگام نصب حالت های مرتبط ws/gRPC/xHTTP اختیاری است`ws`、`gRPC`、`xHTTP`یا`ws+gRPC+xHTTP`. اسکریپت به ترتیب پورت، مسیر، لینک اشتراک گذاری و کد QR مربوطه را ایجاد می کند. Clash در حال حاضر xHTTP را پشتیبانی نمی کند، و اسکریپت در خروجی پیکربندی درخواست می کند.
 

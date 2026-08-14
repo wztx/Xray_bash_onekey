@@ -1,4 +1,4 @@
-# Xray Management Script — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
+# Xray 管理脚本 — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
 
 Simplified Chinese |[English](/i18n/languages/en/README.md) | [Français](/i18n/languages/fr/README.md) | [Русский](/i18n/languages/ru/README.md) | [فارسی](/i18n/languages/fa/README.md) | [한국어](/i18n/languages/ko/README.md)
 
@@ -10,7 +10,7 @@ Simplified Chinese |[English](/i18n/languages/en/README.md) | [Français](/i18n/
 
 * enter`idleleo`Open the Xray management menu to manage installation, services, security settings, etc.
 * Use Qwen-MT-Plus AI to achieve accurate translation in multiple languages
-* Supports Reality protocol, it is recommended to use Nginx prefix (can be installed in the script)
+* 支持 Reality 协议，建议搭配 Nginx 前置（脚本内可安装）
 * Supports WebSocket, gRPC, xHTTP transmission, you can choose single transmission or`ws+gRPC+xHTTP`Enable both
 * Built-in fail2ban protection (installable within script)
 * Built-in Xray traffic statistics, traffic blocking, GeoIP/GeoSite rule update and regular update
@@ -85,7 +85,7 @@ If any step in the reconfiguration process fails (configuration writing, service
 | Install ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
 | View installation information | `idleleo --show` |
 | update script | `idleleo --update` |
-| Update Xray | `idleleo --xray-update` |
+| 更新 Xray | `idleleo --xray-update` |
 | Update Nginx | `idleleo --nginx-update` |
 | Set Fail2ban | `idleleo --set-fail2ban` |
 | Set up traffic blocking | `idleleo --traffic-blocker` |

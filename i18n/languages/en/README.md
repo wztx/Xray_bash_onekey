@@ -69,21 +69,21 @@ When the installed environment is installed again, the script will automatically
 
 | path | illustrate | limit |
 |------|------|------|
-| Preserve configuration redeployment | Keep custom routing/outbounds/DNS and multi-user configuration, modify only user-selected fields (ports, paths, UUID, Reality parameters, etc.) | Transmission structure changes (such as ws → gRPC) are not supported. If you need to change the transmission combination, please use the standard template to rebuild it. |
+| Preserve configuration redeployment | Keep custom routing/outbounds/DNS and multi-user configurations, modify only user-selected fields (ports, paths, UUID, Reality parameters, etc.) | Transmission structure changes (such as ws → gRPC) are not supported. If you need to change the transmission combination, please use the standard template to rebuild it. |
 | Standard template reconstruction | Generate standard template configuration using current reusable parameters, custom routing/outbounds/DNS may be removed | It is not mandatory that the number of users remains unchanged |
-| Mode switch | Switch to a different protocol mode (such as Reality → TLS). By default, only the main user UUID/email is reused. | Other users will not be automatically migrated and will be clearly prompted before switching. |
+| 模式切换 | 切换到不同协议模式（如 Reality → TLS），默认只复用主用户 UUID/email | 其他用户不自动迁移，切换前会明确提示 |
 
 If any step in the reconfiguration process fails (configuration writing, service startup, health check, etc.), it will automatically roll back to the original backup configuration. The backup directory uses a unique timestamp to support multiple consecutive reconfigurations without conflicting with each other.
 
-## Common commands
+## 常用命令
 
 | operate | Order |
 |------|------|
 | Open the admin menu | `idleleo` |
 | View help | `idleleo --help` |
-| Install Reality mode | `idleleo --install-reality` |
-| Install TLS mode | `idleleo --install-tls` |
-| Install ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
+| 安装 Reality 模式 | `idleleo --install-reality` |
+| 安装 TLS 模式 | `idleleo --install-tls` |
+| 安装 ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
 | View installation information | `idleleo --show` |
 | update script | `idleleo --update` |
 | Update Xray | `idleleo --xray-update` |
@@ -99,7 +99,7 @@ The built-in local AI operation and maintenance assistant monitors the health st
 **Core Competencies**
 
 * Monitoring: Real-time observation of Xray/Nginx service and configuration status
-* Diagnosis: Locate the root cause of the fault, with confidence recommendations (high/medium/low/insufficient evidence)
+* 诊断：定位故障根因，附置信度建议（高 / 中 / 低 / 证据不足）
 * Judgment: Automatically determine the fault type and give processing suggestions. The instructions clearly indicate that automatic processing is allowed or only suggestions are provided.
 * Mode: Intelligent judgment / observation only / safe deactivation, the system will not be changed until automatic modification is turned on
 
@@ -117,7 +117,7 @@ The built-in local AI operation and maintenance assistant monitors the health st
 
 AI The judgment engine is still in the testing stage. It is recommended to focus on diagnostic suggestions. The system will not be automatically modified by default.
 
-## Docker Deployment
+## Docker deployment
 
 Supports deployment using Docker, the image is pre-installed with Xray and Nginx, and all functions of the original script can be used directly in the container. See details[Docker 部署指南](/docker/DOCKER.md)。
 
@@ -136,7 +136,7 @@ The traditional method requires SSH to go to the server, run the installation sc
 
 **Supported modes**: Reality / TLS / ws ONLY / XTLS ONLY
 
-**How ​​to use**: Directly say "Help me build Xray on the server" in the AI tool that supports Skill, and AI will automatically collect information, generate scripts, perform deployment and return connection information.
+**使用方式**：在支持 Skill 的 AI 工具中直接说"帮我在服务器上搭建 Xray"，AI 会自动收集信息、生成脚本、执行部署并返回连接信息。
 
 ## Things to note
 
@@ -146,10 +146,10 @@ The traditional method requires SSH to go to the server, run the installation sc
 * Supports Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+, some CentOS templates may have compilation problems, it is recommended to change the system when encountering problems
 * It is recommended that a single server deploy only a single agent and use the default port 443
 * Custom string mapping to UUIDv5 requires client support
-* It is recommended to use it in a pure environment; novices should not use CentOS
-* This program depends on Nginx, passed[LNMP](https://lnmp.org)Users who have installed the script Nginx please be aware of potential conflicts.
+* 推荐在纯净环境下使用；新手请勿使用 CentOS
+* This program depends on Nginx, passed[LNMP](https://lnmp.org) 等脚本安装过 Nginx 的用户请注意潜在冲突
 * xHTTP shared link is for clients that support xHTTP; Clash configuration output will skip xHTTP
-* Do not use this script in a production environment without first verifying availability
+* Do not use this script in a production environment without verifying availability
 * Author: Yun Shu, providing limited support only
 
 ## Acknowledgments
@@ -159,7 +159,7 @@ The traditional method requires SSH to go to the server, run the installation sc
 
 ## Certificate configuration
 
-**Custom certificate**: Name the crt and key files respectively.`xray.crt`and`xray.key`, put in`/etc/idleleo/cert`Directory (if the directory does not exist, create it first). Please pay attention to the certificate authority and validity period. After the custom certificate expires, you need to renew it yourself.
+**Custom certificate**: Name the crt and key files respectively`xray.crt`and`xray.key`, put in`/etc/idleleo/cert`Directory (if the directory does not exist, create it first). Please pay attention to the certificate authority and validity period. After the custom certificate expires, you need to renew it yourself.
 
 **Automatic certificate**: The script supports automatically generating Let's Encrypt certificates (valid for 3 months), and theoretically supports automatic renewal.
 

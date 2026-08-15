@@ -53,7 +53,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/hello-yunshu/Xray_bash_oneke
 
 ## Mode d'installation
 
-| modèle | illustrer |
+| 模式 | illustrer |
 |------|------|
 | Reality + Nginx | Mode recommandé, vous pouvez associer un protocole simple ws/gRPC/xHTTP selon vos besoins pour l'équilibrage de charge. |
 | Nginx + TLS | Soutenir ws/gRPC/xHTTP, demander et renouveler automatiquement le certificat Let's Encrypt |
@@ -69,13 +69,13 @@ Lorsque l'environnement installé est à nouveau installé, le script sauvegarde
 
 | chemin | illustrer | limite |
 |------|------|------|
-| Préserver le redéploiement de la configuration | Conservez la configuration routing/outbounds/DNS personnalisée et multi-utilisateurs, modifiez uniquement les champs sélectionnés par l'utilisateur (ports, chemins, paramètres UUID, Reality, etc.) | Les modifications de la structure de transmission (telles que ws → gRPC) ne sont pas prises en charge. Si vous devez modifier la combinaison de transmission, veuillez utiliser le modèle standard pour la reconstruire. |
+| Préserver le redéploiement de la configuration | Conservez les configurations routing/outbounds/DNS et multi-utilisateurs personnalisées, modifiez uniquement les champs sélectionnés par l'utilisateur (ports, chemins, paramètres UUID, Reality, etc.) | Les modifications de la structure de transmission (telles que ws → gRPC) ne sont pas prises en charge. Si vous devez modifier la combinaison de transmission, veuillez utiliser le modèle standard pour la reconstruire. |
 | Reconstruction de modèle standard | Générez une configuration de modèle standard à l'aide des paramètres réutilisables actuels, le routing/outbounds/DNS personnalisé peut être supprimé | Il n'est pas obligatoire que le nombre d'utilisateurs reste inchangé |
-| Changement de mode | Passez à un autre mode de protocole (tel que Reality → TLS). Par défaut, seul l'utilisateur principal UUID/email est réutilisé. | Les autres utilisateurs ne seront pas automatiquement migrés et seront clairement invités avant de changer. |
+| 模式切换 | Passez à un autre mode de protocole (tel que Reality → TLS). Par défaut, seul l'utilisateur principal UUID/email est réutilisé. | Les autres utilisateurs ne seront pas automatiquement migrés et seront clairement invités avant de changer. |
 
 Si une étape du processus de reconfiguration échoue (écriture de la configuration, démarrage du service, vérification de l'état, etc.), elle reviendra automatiquement à la configuration de sauvegarde d'origine. Le répertoire de sauvegarde utilise un horodatage unique pour prendre en charge plusieurs reconfigurations consécutives sans entrer en conflit les unes avec les autres.
 
-## Commandes courantes
+## 常用命令
 
 | fonctionner | Commande |
 |------|------|
@@ -84,7 +84,7 @@ Si une étape du processus de reconfiguration échoue (écriture de la configura
 | Installer le mode Reality | `idleleo --install-reality` |
 | Installer le mode TLS | `idleleo --install-tls` |
 | Installer ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
-| Afficher les informations d'installation | `idleleo --show` |
+| 查看安装信息 | `idleleo --show` |
 | script de mise à jour | `idleleo --update` |
 | Mettre à jour Xray | `idleleo --xray-update` |
 | Mettre à jour Nginx | `idleleo --nginx-update` |
@@ -117,7 +117,7 @@ L'assistant d'exploitation et de maintenance local AI intégré surveille l'éta
 
 AI Le moteur de jugement est encore en phase de test. Il est recommandé de se concentrer sur les suggestions de diagnostic. Le système ne sera pas automatiquement modifié par défaut.
 
-## Docker Déploiement
+## Déploiement Docker
 
 Prend en charge le déploiement à l'aide de Docker, l'image est préinstallée avec Xray et Nginx et toutes les fonctions du script d'origine peuvent être utilisées directement dans le conteneur. Voir les détails[Docker 部署指南](/docker/DOCKER.md)。
 
@@ -149,7 +149,7 @@ La méthode traditionnelle nécessite que SSH accède au serveur, exécute le sc
 * Il est recommandé de l'utiliser dans un environnement pur ; les novices ne devraient pas utiliser CentOS
 * Ce programme dépend de Nginx, réussi[LNMP](https://lnmp.org)Les utilisateurs qui ont installé le script Nginx doivent être conscients des conflits potentiels.
 * Le lien partagé xHTTP est destiné aux clients qui prennent en charge xHTTP ; La sortie de configuration Clash ignorera xHTTP
-* N'utilisez pas ce script dans un environnement de production sans vérifier au préalable la disponibilité
+* N'utilisez pas ce script dans un environnement de production sans vérifier la disponibilité
 * Auteur : Yun Shu, fournissant uniquement une assistance limitée
 
 ## Remerciements
@@ -159,7 +159,7 @@ La méthode traditionnelle nécessite que SSH accède au serveur, exécute le sc
 
 ## Configuration du certificat
 
-**Certificat personnalisé** : nommez respectivement les fichiers crt et key.`xray.crt`et`xray.key`, mettre dedans`/etc/idleleo/cert`Répertoire (si le répertoire n'existe pas, créez-le d'abord). Veuillez faire attention à l'autorité de certification et à la période de validité. Une fois le certificat personnalisé expiré, vous devez le renouveler vous-même.
+**Certificat personnalisé** : nommez respectivement les fichiers crt et key`xray.crt`et`xray.key`, mettre dedans`/etc/idleleo/cert`Répertoire (si le répertoire n'existe pas, créez-le d'abord). Veuillez faire attention à l'autorité de certification et à la période de validité. Une fois le certificat personnalisé expiré, vous devez le renouveler vous-même.
 
 **Certificat automatique** : le script prend en charge la génération automatique de certificats Let's Encrypt (valable 3 mois) et prend théoriquement en charge le renouvellement automatique.
 

@@ -6,7 +6,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: xray_install 1.0\n"
-"Report-Msgid-Bugs-To: https://github.com/hello-yunshu/Xray_bash_onekey/issues\n"
+"Report-Msgid-Bugs-To: https://github.com/hello-yunshu/Xray_bash_onekey/"
+"issues\n"
 "POT-Creation-Date: 2026-08-17 19:08+0000\n"
 "PO-Revision-Date: 2026-05-14 05:38+0000\n"
 "Last-Translator: Automatically generated\n"
@@ -75,8 +76,8 @@ msgstr "échec du renforcement des permissions du fichier de configuration"
 #: install.sh:698 scripts/rill_xray_agent_manager.sh:633
 msgid "提示：Rill AI 判断引擎目前仍处于测试阶段。"
 msgstr ""
-"Remarque : le moteur de décision Rill AI est actuellement encore en phase de"
-" test."
+"Remarque : le moteur de décision Rill AI est actuellement encore en phase de "
+"test."
 
 #: install.sh:699 scripts/rill_xray_agent_manager.sh:634
 msgid "可能存在兼容性、判断准确性或稳定性问题，不能保证完全无故障。"
@@ -168,7 +169,6 @@ msgid "当前系统为"
 msgstr "le système actuel est"
 
 #: install.sh:1422
-#| msgid "语言文件更新失败"
 msgid "软件源更新失败"
 msgstr "échec de la mise à jour des sources du logiciel"
 
@@ -196,8 +196,7 @@ msgstr ""
 
 #: install.sh:1485
 msgid "无法获取远程语言文件信息"
-msgstr ""
-"impossible d'obtenir les informations sur le fichier de langue distant"
+msgstr "impossible d'obtenir les informations sur le fichier de langue distant"
 
 #: install.sh:1503
 msgid "正在更新语言文件"
@@ -281,8 +280,7 @@ msgstr "non trouvé"
 #: install.sh:1692
 msgid "language.conf 校验失败, 将使用默认语言"
 msgstr ""
-"échec de la validation de language.conf ; utilisation de la langue par "
-"défaut"
+"échec de la validation de language.conf ; utilisation de la langue par défaut"
 
 #: install.sh:1707
 msgid "不支持的语言"
@@ -295,11 +293,9 @@ msgstr "découvrir la mise à jour du fichier de langue"
 #: install.sh:1773 install.sh:1779 install.sh:9962
 msgid "在线版本检测失败, 请稍后再试"
 msgstr ""
-"la vérification de la version en ligne a échoué, veuillez réessayer plus "
-"tard"
+"la vérification de la version en ligne a échoué, veuillez réessayer plus tard"
 
 #: install.sh:1821
-#| msgid "安装失败"
 msgid "软件包安装失败"
 msgstr "échec de l’installation du package logiciel"
 
@@ -441,8 +437,8 @@ msgstr "échec de la persistance des règles"
 #: install.sh:2856 install.sh:2946
 msgid "基础防火墙规则回滚未完成, 部分规则仍保留并已记录"
 msgstr ""
-"L’annulation des règles de pare‑feu d’origine n’est pas terminée ; certaines"
-" règles demeurent en place et ont été consignées."
+"L’annulation des règles de pare‑feu d’origine n’est pas terminée ; certaines "
+"règles demeurent en place et ont été consignées."
 
 #: install.sh:2861 install.sh:2920 install.sh:2942 install.sh:2951
 msgid "基础防火墙规则状态写入失败"
@@ -474,8 +470,8 @@ msgstr "doit-on configurer un pare-feu"
 #: install.sh:3154
 msgid "当前网络模式所需的防火墙工具缺失 (iptables/ip6tables), 防火墙配置已中止"
 msgstr ""
-"L’outil de pare-feu requis pour le mode réseau actuel est absent "
-"(iptables/ip6tables), la configuration du pare-feu a été interrompue."
+"L’outil de pare-feu requis pour le mode réseau actuel est absent (iptables/"
+"ip6tables), la configuration du pare-feu a été interrompue."
 
 #: install.sh:3165
 msgid "基础防火墙规则配置失败"
@@ -656,8 +652,8 @@ msgstr ""
 msgid "版本过旧, 建议更新"
 msgstr "la version est trop ancienne, il est recommandé de la mettre à jour"
 
-#: install.sh:3573 scripts/fail2ban_manager.sh:1169
-#: scripts/file_manager.sh:335 scripts/traffic_blocker.sh:1216
+#: install.sh:3573 scripts/fail2ban_manager.sh:1169 scripts/file_manager.sh:335
+#: scripts/traffic_blocker.sh:1216
 msgid "是否下载并安装新版本"
 msgstr "télécharger et installer la nouvelle version"
 
@@ -897,7 +893,9 @@ msgid "直接拒绝异常 TLS 连接"
 msgstr "refuser directement la connexion anormale TLS"
 
 #: install.sh:4716
-msgid "第 2 项需要你已有自己的域名, 并且该域名的 A/AAAA 记录指向本机公网 IP。若不了解含义, 请使用默认隔离策略。"
+msgid ""
+"第 2 项需要你已有自己的域名, 并且该域名的 A/AAAA 记录指向本机公网 IP。若不了"
+"解含义, 请使用默认隔离策略。"
 msgstr ""
 "La deuxième étape exige que vous possédiez déjà votre propre nom de domaine "
 "et que l’enregistrement A/AAAA de ce nom de domaine pointe vers votre "
@@ -954,8 +952,8 @@ msgstr "non lié à l’adresse ip publique locale IP"
 msgid "请先将域名 A/AAAA 记录指向本机, 或使用默认隔离策略"
 msgstr ""
 "Veuillez d’abord configurer le enregistrement du nom de domaine A/AAAA pour "
-"qu’il pointe vers cet hôte, ou bien utiliser la politique de confinement par"
-" défaut."
+"qu’il pointe vers cet hôte, ou bien utiliser la politique de confinement par "
+"défaut."
 
 #: install.sh:4832
 msgid "域名校验通过"
@@ -1012,8 +1010,8 @@ msgstr "Requis pour servir de serveur maître d'équilibrage de charge Reality"
 #: install.sh:4996
 msgid "作为 Reality 负载均衡二级服务器时无需安装"
 msgstr ""
-"Aucune installation requise lorsque vous faites office de serveur secondaire"
-" d'équilibrage de charge Reality"
+"Aucune installation requise lorsque vous faites office de serveur secondaire "
+"d'équilibrage de charge Reality"
 
 #: install.sh:5040
 msgid "已存在, 跳过编译安装过程"
@@ -1118,8 +1116,7 @@ msgstr ""
 #: install.sh:5361
 msgid "sbin/nginx 不是可执行 ELF 二进制, 拒绝安装"
 msgstr ""
-"sbin/nginx n’est pas un fichier binaire ELF exécutable ; installation "
-"refusée"
+"sbin/nginx n’est pas un fichier binaire ELF exécutable ; installation refusée"
 
 #: install.sh:5369
 msgid "staging 目录移动失败"
@@ -1291,8 +1288,8 @@ msgstr "le fichier de configuration d'origine a été conservé"
 #: install.sh:5925
 msgid "版本记录更新失败, 执行回滚"
 msgstr ""
-"échec de la mise à jour de l’enregistrement de version ; exécution du retour"
-" en arrière."
+"échec de la mise à jour de l’enregistrement de version ; exécution du retour "
+"en arrière."
 
 #: install.sh:5929 install.sh:7279 install.sh:7286 install.sh:8319
 #: install.sh:11577 install.sh:12058 scripts/fail2ban_manager.sh:907
@@ -1315,8 +1312,8 @@ msgstr "déjà à la dernière version"
 #: install.sh:5974
 msgid "设置后台定时自动更新程序 (包含: 脚本/Xray/Nginx)"
 msgstr ""
-"configurer un programme de mise à jour automatique en arrière-plan (incluant"
-" : script/xray/nginx)"
+"configurer un programme de mise à jour automatique en arrière-plan "
+"(incluant : script/xray/nginx)"
 
 #: install.sh:5975
 msgid "可能自动更新后有兼容问题, 谨慎启用"
@@ -1364,8 +1361,8 @@ msgstr "installer le script de génération de certificat SSL"
 #: install.sh:6028
 msgid "检测到原域名配置存在, 是否跳过域名设置"
 msgstr ""
-"la configuration du domaine d'origine a été détectée. voulez-vous ignorer la"
-" configuration du domaine"
+"la configuration du domaine d'origine a été détectée. voulez-vous ignorer la "
+"configuration du domaine"
 
 #: install.sh:6044 install.sh:6246 install.sh:6281 install.sh:6310
 msgid "无法获取公网IP地址"
@@ -1414,8 +1411,7 @@ msgstr ""
 #: install.sh:6072 install.sh:6111 install.sh:6147 install.sh:6192
 msgid "域名 DNS 解析记录与公网 IP 匹配"
 msgstr ""
-"L’enregistrement de résolution du nom de domaine DNS correspond au IP "
-"public."
+"L’enregistrement de résolution du nom de domaine DNS correspond au IP public."
 
 #: install.sh:6075 install.sh:6114 install.sh:6150 install.sh:6195
 msgid "检测到错误的 A/AAAA 记录, 可能导致部分客户端连接失败"
@@ -1454,8 +1450,8 @@ msgstr "continuer l'installation"
 #: install.sh:6095 install.sh:6131 install.sh:6167 install.sh:6211
 msgid "无法通过域名 A/AAAA 记录校验公网 IP"
 msgstr ""
-"Impossible de vérifier le IP public via l’enregistrement du nom de domaine "
-"A/AAAA."
+"Impossible de vérifier le IP public via l’enregistrement du nom de domaine A/"
+"AAAA."
 
 #: install.sh:6095 install.sh:6131 install.sh:6167 install.sh:6211
 #: install.sh:6669 install.sh:6834 install.sh:6898
@@ -1472,14 +1468,14 @@ msgstr ""
 #: install.sh:6178
 msgid "请为服务器商提供的域名添加 CNAME 记录"
 msgstr ""
-"Veuillez ajouter l'enregistrement CNAME pour le nom de domaine fourni par le"
-" fournisseur de serveur."
+"Veuillez ajouter l'enregistrement CNAME pour le nom de domaine fourni par le "
+"fournisseur de serveur."
 
 #: install.sh:6228
 msgid "检测到原IP配置存在, 是否跳过IP设置"
 msgstr ""
-"configuration IP originale détectée, souhaitez-vous ignorer la configuration"
-" IP"
+"configuration IP originale détectée, souhaitez-vous ignorer la configuration "
+"IP"
 
 #: install.sh:6250
 msgid "已跳过IP设置"
@@ -1541,13 +1537,12 @@ msgstr ""
 #: install.sh:6409
 msgid "请更换端口或自行停止对应服务后重试"
 msgstr ""
-"Veuillez changer de port ou arrêter vous-même le service correspondant, puis"
-" réessayer."
+"Veuillez changer de port ou arrêter vous-même le service correspondant, puis "
+"réessayer."
 
 #: install.sh:6418
 msgid "证书测试签发成功, 开始正式签发"
-msgstr ""
-"test de certificat émis avec succès, début de la délivrance officielle"
+msgstr "test de certificat émis avec succès, début de la délivrance officielle"
 
 #: install.sh:6421
 msgid "证书测试签发失败"
@@ -1635,8 +1630,8 @@ msgstr "continuer ou non"
 #: install.sh:6699
 msgid "已删除配置文件, 将使用标准模板重建"
 msgstr ""
-"Le fichier de configuration a été supprimé ; il sera reconstruit à partir du"
-" modèle standard."
+"Le fichier de configuration a été supprimé ; il sera reconstruit à partir du "
+"modèle standard."
 
 #: install.sh:6702 install.sh:6708 install.sh:6751 install.sh:6851
 msgid "已取消, 返回菜单"
@@ -1722,8 +1717,8 @@ msgstr "tentative de poursuite à l’aide de la configuration déjà chargée."
 #: install.sh:6848
 msgid "已删除不完整配置文件, 将使用标准模板重建"
 msgstr ""
-"Le fichier de configuration incomplet a été supprimé ; il sera reconstruit à"
-" partir du modèle standard."
+"Le fichier de configuration incomplet a été supprimé ; il sera reconstruit à "
+"partir du modèle standard."
 
 #: install.sh:6864
 msgid "当前配置摘要"
@@ -1775,15 +1770,15 @@ msgstr "aucune modification supplémentaire, début du redéploiement."
 #: install.sh:6892
 msgid "UUID 和多用户信息请使用现有用户管理或 UUID 变更功能"
 msgstr ""
-"Pour UUID et les informations relatives aux multiples utilisateurs, veuillez"
-" utiliser la gestion des utilisateurs existante ou la fonction de "
+"Pour UUID et les informations relatives aux multiples utilisateurs, veuillez "
+"utiliser la gestion des utilisateurs existante ou la fonction de "
 "modification UUID."
 
 #: install.sh:6893
 msgid "传输组合变更请使用标准模板重建"
 msgstr ""
-"Pour toute modification de la combinaison de transmission, veuillez utiliser"
-" le modèle standard pour la recréer."
+"Pour toute modification de la combinaison de transmission, veuillez utiliser "
+"le modèle standard pour la recréer."
 
 #: install.sh:6894
 msgid "Nginx/SNI 修改请使用标准模板重建"
@@ -2016,8 +2011,7 @@ msgstr ""
 #: install.sh:8337
 msgid "当前 xHTTP 仅支持 stream-one 和 stream-up 模式"
 msgstr ""
-"Actuellement, xHTTP ne prend en charge que les modes stream-one et stream-"
-"up."
+"Actuellement, xHTTP ne prend en charge que les modes stream-one et stream-up."
 
 #: install.sh:8338
 msgid "xHTTP 需要 mihomo (Meta) 内核, 原版 Clash 不支持"
@@ -2335,8 +2329,8 @@ msgstr "(￣▽￣) ヾ salut~"
 #: install.sh:9329 install.sh:9346
 msgid "卸载后校验失败, 已保留 Rill 诊断"
 msgstr ""
-"Échec de la vérification après la désinstallation ; les diagnostics Rill ont"
-" été conservés."
+"Échec de la vérification après la désinstallation ; les diagnostics Rill ont "
+"été conservés."
 
 #: install.sh:9337
 msgid "已删除配置文件"
@@ -2425,8 +2419,8 @@ msgstr ""
 "la version du script a beaucoup changé. si le service ne fonctionne pas "
 "correctement, veuillez le désinstaller puis le réinstaller"
 
-#: install.sh:9869 scripts/fail2ban_manager.sh:1188
-#: scripts/file_manager.sh:354 scripts/traffic_blocker.sh:1235
+#: install.sh:9869 scripts/fail2ban_manager.sh:1188 scripts/file_manager.sh:354
+#: scripts/traffic_blocker.sh:1235
 msgid "当前已经是最新版本"
 msgstr "c'est déjà la version la plus récente"
 
@@ -2530,7 +2524,6 @@ msgid "安装或修复 Rill AI 判断引擎"
 msgstr "Installer ou réparer le moteur de décision Rill AI"
 
 #: install.sh:10166
-#| msgid "AI 判断引擎校验通过"
 msgid "判断引擎状态"
 msgstr "évaluer l’état du moteur de décision"
 
@@ -2813,8 +2806,8 @@ msgstr ""
 #: install.sh:11063
 msgid "Nginx 服务恢复后仍为 enabled, 但原系统无此 unit"
 msgstr ""
-"Le service reste à Nginx après sa récupération, mais le système d’origine ne"
-" dispose pas de ce unit."
+"Le service reste à Nginx après sa récupération, mais le système d’origine ne "
+"dispose pas de ce unit."
 
 #: install.sh:11089 install.sh:11093
 msgid "ACME 定时任务未能恢复, 请手动检查"
@@ -2825,8 +2818,8 @@ msgstr ""
 #: install.sh:11116
 msgid "ACME 定时任务删除后仍存在, 请手动检查"
 msgstr ""
-"La tâche planifiée persiste même après sa suppression ; veuillez la vérifier"
-" manuellement."
+"La tâche planifiée persiste même après sa suppression ; veuillez la vérifier "
+"manuellement."
 
 #: install.sh:11123
 msgid "恢复后验证失败, 请手动检查"
@@ -2956,8 +2949,8 @@ msgstr "Sans Nginx, sans TLS"
 #: install.sh:11878
 msgid "ONLY 模式主要用于中转、负载均衡后端或已有上层代理的环境"
 msgstr ""
-"Le mode ONLY est destiné aux relais, aux backends d’équilibrage de charge ou"
-" aux environnements disposant déjà d’un proxy en amont"
+"Le mode ONLY est destiné aux relais, aux backends d’équilibrage de charge ou "
+"aux environnements disposant déjà d’un proxy en amont"
 
 #: install.sh:11908 install.sh:12229
 msgid "安装向导"
@@ -3154,8 +3147,7 @@ msgstr "désactivé"
 #: scripts/fail2ban_manager.sh:289
 msgid "regex 自检未通过, 请检查日志格式"
 msgstr ""
-"regex L’auto‑vérification a échoué, veuillez vérifier le format des "
-"journaux."
+"regex L’auto‑vérification a échoué, veuillez vérifier le format des journaux."
 
 #: scripts/fail2ban_manager.sh:291
 msgid "regex 自检通过"
@@ -3201,8 +3193,8 @@ msgstr "Débannir"
 #: scripts/fail2ban_manager.sh:450
 msgid "解封后仍在封禁列表中, 请检查"
 msgstr ""
-"Après le déblocage, l’utilisateur figure toujours sur la liste des blocages "
-"; veuillez vérifier."
+"Après le déblocage, l’utilisateur figure toujours sur la liste des "
+"blocages ; veuillez vérifier."
 
 #: scripts/fail2ban_manager.sh:454
 msgid "解封失败"
@@ -3692,13 +3684,14 @@ msgstr "AI évaluation : non disponible"
 
 #: scripts/rill_xray_agent_manager.sh:767
 msgid ""
-"开启 AI 智能判断后，系统将持续观测 Xray/Nginx 状态，自动诊断故障并给出处理建议。说明：自动修改功能暂不开放，当前不会自动更改系统。"
+"开启 AI 智能判断后，系统将持续观测 Xray/Nginx 状态，自动诊断故障并给出处理建"
+"议。说明：自动修改功能暂不开放，当前不会自动更改系统。"
 msgstr ""
 "Une fois la fonction de décision intelligente AI activée, le système "
 "surveillera en continu l’état de Xray/Nginx, diagnostiquera automatiquement "
 "les éventuelles défaillances et proposera des recommandations "
-"d’intervention. Remarque : la fonction de modification automatique n’est pas"
-" encore disponible ; pour l’instant, le système ne procède à aucune "
+"d’intervention. Remarque : la fonction de modification automatique n’est pas "
+"encore disponible ; pour l’instant, le système ne procède à aucune "
 "modification automatique."
 
 #: scripts/rill_xray_agent_manager.sh:770
@@ -3711,8 +3704,8 @@ msgstr ""
 #: scripts/rill_xray_agent_manager.sh:773
 msgid "安全停用后，AI 判断功能暂停，引擎保留，可随时重新开启。"
 msgstr ""
-"Après une désactivation sécurisée, la fonction de jugement AI est suspendue,"
-" tandis que le moteur reste en place et peut être réactivé à tout moment."
+"Après une désactivation sécurisée, la fonction de jugement AI est suspendue, "
+"tandis que le moteur reste en place et peut être réactivé à tout moment."
 
 #: scripts/rill_xray_agent_manager.sh:781
 msgid "确认切换吗？ [y/N]: "
@@ -3743,8 +3736,8 @@ msgstr ""
 #: scripts/rill_xray_agent_manager.sh:813
 msgid "Xray 相关服务运行正常，未发现近期故障"
 msgstr ""
-"Les services associés à Xray fonctionnent normalement ; aucune panne récente"
-" n’a été détectée."
+"Les services associés à Xray fonctionnent normalement ; aucune panne récente "
+"n’a été détectée."
 
 #: scripts/rill_xray_agent_manager.sh:814
 msgid "近期配置发生过变化，但当前服务与配置校验均正常"
@@ -3799,8 +3792,8 @@ msgstr ""
 #: scripts/rill_xray_agent_manager.sh:826
 msgid "已生成判断结果，请结合诊断代码继续检查"
 msgstr ""
-"Le résultat du diagnostic a été généré ; veuillez poursuivre l’inspection en"
-" tenant compte du code de diagnostic."
+"Le résultat du diagnostic a été généré ; veuillez poursuivre l’inspection en "
+"tenant compte du code de diagnostic."
 
 #: scripts/rill_xray_agent_manager.sh:836
 #: scripts/rill_xray_agent_manager.sh:845
@@ -3870,7 +3863,9 @@ msgid "三种工作模式说明："
 msgstr "explication des trois modes de fonctionnement :"
 
 #: scripts/rill_xray_agent_manager.sh:904
-msgid "智能判断：AI 实时诊断故障并给出处理建议。自动修改功能暂不开放，当前不会自动更改系统。"
+msgid ""
+"智能判断：AI 实时诊断故障并给出处理建议。自动修改功能暂不开放，当前不会自动更"
+"改系统。"
 msgstr ""
 "Diagnostic intelligent : AI effectue en temps réel le diagnostic des pannes "
 "et propose des recommandations d’intervention. La fonction de modification "
@@ -3880,9 +3875,9 @@ msgstr ""
 #: scripts/rill_xray_agent_manager.sh:905
 msgid "观察模式：AI 仅观察和判断，不会自动修改系统，结果仅供参考。"
 msgstr ""
-"Mode d’observation : AI Seules l’observation et l’évaluation sont effectuées"
-" ; aucun changement automatique ne sera apporté au système, et les résultats"
-" ne sont fournis qu’à titre indicatif."
+"Mode d’observation : AI Seules l’observation et l’évaluation sont "
+"effectuées ; aucun changement automatique ne sera apporté au système, et les "
+"résultats ne sont fournis qu’à titre indicatif."
 
 #: scripts/rill_xray_agent_manager.sh:906
 msgid "安全停用：暂停 AI 判断功能，引擎保留，可随时重新开启。"
@@ -3923,7 +3918,8 @@ msgid "运行 AI 故障诊断"
 msgstr "exécution du diagnostic des défauts de AI"
 
 #: scripts/rill_xray_agent_manager.sh:957
-msgid "本地 AI 运维助手：实时监控 Xray/Nginx 健康，自动诊断故障并给出处理建议。"
+msgid ""
+"本地 AI 运维助手：实时监控 Xray/Nginx 健康，自动诊断故障并给出处理建议。"
 msgstr ""
 "Assistant d’exploitation et de maintenance local : surveillance en temps "
 "réel de l’état de santé de Xray/Nginx, diagnostic automatique des pannes et "
@@ -4225,8 +4221,8 @@ msgstr "le fichier de configuration Xray n’existe pas"
 #: scripts/traffic_blocker.sh:997
 msgid "Xray 配置中缺少 blocked 出站, 无法应用阻断规则"
 msgstr ""
-"la configuration Xray ne contient pas de règle d’interception des connexions"
-" sortantes ; les règles de blocage ne peuvent donc pas être appliquées "
+"la configuration Xray ne contient pas de règle d’interception des connexions "
+"sortantes ; les règles de blocage ne peuvent donc pas être appliquées "
 "[blocked]"
 
 #: scripts/traffic_blocker.sh:1002
@@ -4242,8 +4238,8 @@ msgstr "configuration actuelle des règles de blocage"
 #: scripts/traffic_blocker.sh:1029
 msgid "应用规则将重建路由配置, 自定义路由规则将被覆盖"
 msgstr ""
-"l’application des règles entraînera la reconstruction de la configuration du"
-" routage, et les règles de routage personnalisées seront remplacées"
+"l’application des règles entraînera la reconstruction de la configuration du "
+"routage, et les règles de routage personnalisées seront remplacées"
 
 #: scripts/traffic_blocker.sh:1033
 msgid "GeoData 下载失败, 无法应用规则"
@@ -4284,8 +4280,7 @@ msgstr "épandage de protocole"
 #: scripts/traffic_blocker.sh:1135
 msgid "此操作将重置所有阻断规则为禁用状态"
 msgstr ""
-"cette opération réinitialisera toutes les règles de blocage en état "
-"désactivé"
+"cette opération réinitialisera toutes les règles de blocage en état désactivé"
 
 #: scripts/traffic_blocker.sh:1136
 msgid "确认重置"

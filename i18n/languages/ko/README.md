@@ -8,8 +8,8 @@
 
 ## 특징
 
-* 입력하다`idleleo`Xray 관리 메뉴를 열어 설치, 서비스, 보안 설정 등을 관리하세요.
-* 여러 언어로 정확한 번역을 얻으려면 Qwen-MT-Plus AI을 사용하세요.
+* 输入 `idleleo`Xray 관리 메뉴를 열어 설치, 서비스, 보안 설정 등을 관리하세요.
+* 여러 언어로 정확한 번역을 얻으려면 Qwen-MT-Plus AI을(를) 사용하세요.
 * Reality 프로토콜을 지원합니다. Nginx 접두사 사용을 권장합니다(스크립트에 설치 가능).
 * WebSocket, gRPC, xHTTP 전송을 지원하며 단일 전송 또는`ws+gRPC+xHTTP`둘 다 활성화
 * IPv4 / IPv6 듀얼 스택 지원: 설치 중 공용 네트워크 내보내기 기능을 자동으로 감지하고 도메인 이름 A/AAAA을 기반으로 독립적인 확인을 기록하며 해당 공유 링크 및 Clash 구성을 생성할 수 있습니다.
@@ -18,7 +18,7 @@
 * 스크립트, Xray, Nginx 및 인증서 업데이트를 지원하고 중요 업데이트에 대한 백업 및 오류 롤백을 제공합니다.
 * 현재 실행 중인 구성은 재설치 및 모드 전환 전에 자동으로 백업되며, 장애 발생 시 원래 구성이 복원됩니다.
 * 재구성은 구성 보존 재배포, 표준 템플릿 재구성 및 모드 전환이라는 세 가지 안전한 경로를 제공합니다.
-* 사용[@DuckSoft](https://github.com/DuckSoft)님의 공유 링크[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), Qv2ray, V2rayN, V2rayNG과 호환 가능
+* 사용[@DuckSoft](https://github.com/DuckSoft) 的分享链接[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), Qv2ray, V2rayN, V2rayNG과 호환 가능
 * 사용[XTLS](https://github.com/XTLS/Xray-core/issues/158)제안, 따르다[UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3)표준, VLESS UUID에 대한 사용자 정의 문자열 매핑 지원
 * gRPC 프로토콜을 지원합니다:[使用 gRPC 协议](https://hey.run/posts/xrayjin-jie-wan-fa---shi-yong-grpcxie-yi)
 * Reality / ws/gRPC/xHTTP 로드 밸런싱을 지원합니다.
@@ -28,7 +28,7 @@
 
 ## 추가 읽기
 
-* `idleleo`뒷이야기 명명:[迷雾后的真容](https://github.com/hello-yunshu/Xray_bash_onekey/wiki/%E8%BF%B7%E9%9B%9C%E5%90%8E%E7%9A%84%E7%9C%9F%E5%AE%B9)
+* `idleleo` 命名背景故事：[迷雾后的真容](https://github.com/hello-yunshu/Xray_bash_onekey/wiki/%E8%BF%B7%E9%9B%9C%E5%90%8E%E7%9A%84%E7%9C%9F%E5%AE%B9)
 * Reality 설치 안내서:[搭建 Xray Reality 服务器](https://hey.run/posts/da-jian-xray-reality-xie-yi-fu-wu-qi)
 * Reality 프로토콜 위험:[Xray Reality 协议的风险](https://hey.run/posts/reality-xie-yi-de-feng-xian)
 * Reality 가속 서버:[利用 Reality 协议"漏洞"加速服务器](https://hey.run/posts/use-reality)
@@ -37,13 +37,13 @@
 
 * 커뮤니케이션 그룹:[点击加入](https://t.me/+48VSqv7xIIFmZDZl)
 
-## 준비
+## 准备工作
 
 * 공용 네트워크가 있는 해외 서버 IP
 * Reality 프로토콜 설치: Xray의 요구 사항을 충족하는 대상 도메인 이름을 준비해야 합니다.
 * TLS 버전 설치: 서버의 사용 가능한 네트워크에 따라 도메인 이름을 준비하고 A 및/또는 AAAA 레코드를 올바르게 구성해야 합니다. 이중 스택 환경의 경우 올바른 A 및 AAAA을 동시에 구성하는 것이 좋습니다. 이 스크립트는 IPv4/IPv6 네트워크 기능의 자동 감지를 지원합니다. 듀얼 스택을 사용할 수 있는 경우 해당 클라이언트 항목이 동시에 생성될 수 있습니다.
 * 읽다[Xray 官方文档](https://xtls.github.io), Reality, TLS, WebSocket, gRPC 및 Xray 관련 개념을 이해합니다.
-* **curl이 설치되어 있는지 확인: CentOS 사용자 실행`yum install -y curl`;Debian/Ubuntu 사용자 실행`apt install -y curl`
+* **确保已安装 curl**：CentOS 用户执行 `yum install -y curl`；Debian/Ubuntu 用户执行 `apt install -y curl`
 
 ## 빠른 설치
 
@@ -70,10 +70,10 @@ ws/gRPC/xHTTP 관련 모드 설치 시 선택 사항`ws`、`gRPC`、`xHTTP`또�
 | 길 | 설명하다 | 한계 |
 |------|------|------|
 | 구성 재배포 유지 | 사용자 정의 routing/outbounds/DNS 및 다중 사용자 구성을 유지하고 사용자가 선택한 필드(포트, 경로, UUID, Reality 매개변수 등)만 수정합니다. | 전송 구조 변경(예: ws → gRPC)은 지원되지 않습니다. 전송 조합을 변경해야 하는 경우 표준 템플릿을 사용하여 다시 구성하십시오. |
-| 표준 템플릿 재구성 | 현재 재사용 가능한 매개변수를 사용하여 표준 템플릿 구성을 생성합니다. 사용자 정의 routing/outbounds/DNS이(가) 제거될 수 있습니다. | 사용자 수를 변경하지 않아도 됩니다. |
+| 표준 템플릿 재구성 | 使用当前可复用参数生成标准模板配置，自定义 routing/outbounds/DNS 可能被移除 | 사용자 수를 변경하지 않는 것이 필수는 아닙니다. |
 | 모드 스위치 | 다른 프로토콜 모드로 전환합니다(예: Reality → TLS). 기본적으로 기본 사용자 UUID/email만 재사용됩니다. | 다른 사용자는 자동으로 마이그레이션되지 않으며 전환하기 전에 명확한 메시지가 표시됩니다. |
 
-재구성 프로세스의 특정 단계(구성 작성, 서비스 시작, 상태 확인 등)가 실패하면 자동으로 원래 백업 구성으로 롤백됩니다. 백업 디렉터리는 고유한 타임스탬프를 사용하여 서로 충돌하지 않고 여러 번의 연속 재구성을 지원합니다.
+重配置过程中任何步骤失败（配置写入、服务启动、健康检查等）都会自动回滚到备份的原配置。备份目录使用唯一时间戳，支持连续多次重配置互不冲突。
 
 ## 일반적인 명령
 
@@ -84,7 +84,7 @@ ws/gRPC/xHTTP 관련 모드 설치 시 선택 사항`ws`、`gRPC`、`xHTTP`또�
 | Reality 모드 설치 | `idleleo --install-reality` |
 | TLS 모드 설치 | `idleleo --install-tls` |
 | ws/gRPC/xHTTP ONLY 설치 | `idleleo --install-none` |
-| 설치정보 보기 | `idleleo --show` |
+| 查看安装信息 | `idleleo --show` |
 | 업데이트 스크립트 | `idleleo --update` |
 | Xray 업데이트 | `idleleo --xray-update` |
 | Nginx 업데이트 | `idleleo --nginx-update` |
@@ -94,9 +94,9 @@ ws/gRPC/xHTTP 관련 모드 설치 시 선택 사항`ws`、`gRPC`、`xHTTP`또�
 
 ## RillML Xray AI 운영 및 유지 관리 보조원
 
-RillML (Rill)은 Xray에 로컬 적응형 지능형 운영 및 유지 관리 기능을 제공합니다.
+RillML(약어로 Rill)은 Xray에 대한 로컬 적응형 지능형 작동 및 유지 관리 기능을 제공합니다.
 
-내장된 로컬 AI 작동 및 유지 관리 도우미는 Xray/Nginx의 상태를 실시간으로 모니터링하고, 자동으로 결함을 진단하고, 외부 API 없이도 치료 제안을 제공합니다. 메인 메뉴 입력`9`또는 실행`idleleo --rill-agent`입력하다.
+내장된 로컬 AI 작동 및 유지 관리 도우미는 외부 API 없이도 Xray/Nginx의 상태를 실시간으로 모니터링하고 자동으로 결함을 진단하며 치료 제안을 제공합니다. 메인 메뉴 입력`9`또는 실행`idleleo --rill-agent`입력하다.
 
 **핵심 역량**
 
@@ -111,9 +111,9 @@ RillML (Rill)은 Xray에 로컬 적응형 지능형 운영 및 유지 관리 기
 |------|------|
 | AI 운영 및 유지 관리 보조 메뉴 열기 | `idleleo --rill-agent` |
 | AI 판단 엔진 설치 또는 수리 | `idleleo --rill-agent-install` |
-| AI 판정 상태를 확인하세요 | `idleleo --rill-agent-status` |
+| 查看 AI 判断状态 | `idleleo --rill-agent-status` |
 | AI 문제 해결 실행 | `idleleo --rill-agent-diagnose` |
-| 검증 AI 판단 엔진 | `idleleo --rill-agent-verify` |
+| 校验 AI 判断引擎 | `idleleo --rill-agent-verify` |
 | 보안 비활성화 AI 판단 | `idleleo --rill-agent-safe-disable` |
 | Rill AI 엔진 제거 | `idleleo --rill-agent-uninstall` |
 
@@ -138,11 +138,11 @@ docker attach xray-onekey
 
 **지원되는 모드**: Reality / TLS / ws ONLY / XTLS ONLY
 
-**使用方式**：在支持 Skill 的 AI 工具中直接说"帮我在服务器上搭建 Xray"，AI 会自动收集信息、生成脚本、执行部署并返回连接信息。
+**사용 방법**: Skill을 지원하는 AI 도구에서 "서버에 Xray 구축을 도와주세요"라고 직접 말하면 AI이 자동으로 정보를 수집하고, 스크립트를 생성하고, 배포를 수행하고, 연결 정보를 반환합니다.
 
 ## 주의할 점
 
-* 각 설정의 의미를 이해하지 못하는 경우, 필수 항목을 제외하고는 기본값을 그대로 사용하시기 바랍니다. (Enter만 누르시면 됩니다.)
+* 각 설정의 의미를 이해하지 못하실 경우, 필수 항목을 제외하고는 기본값을 그대로 사용하시기 바랍니다. (Enter만 누르시면 됩니다.)
 * Cloudflare 사용자는 설치가 완료된 후 CDN을(를) 열어주세요.
 * 이 스크립트를 사용하려면 Linux에 대한 기본 지식과 컴퓨터 네트워크 지식이 필요합니다.
 * Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+를 지원하며 일부 CentOS 템플릿에는 컴파일 문제가 있을 수 있으므로 문제가 발생하면 시스템을 변경하는 것이 좋습니다.
@@ -182,7 +182,7 @@ cat /etc/idleleo/info/xray_info.inf
 | 작동하다 | 주문하다 |
 |------|------|
 | Xray 시작 | `systemctl start xray` |
-| Xray 중지 | `systemctl stop xray` |
+| 停止 Xray | `systemctl stop xray` |
 | Nginx 시작 | `systemctl start nginx` |
 | Nginx 중지 | `systemctl stop nginx` |
 
@@ -197,4 +197,4 @@ cat /etc/idleleo/info/xray_info.inf
 | 인증서 파일 | `/etc/idleleo/cert/xray.key`、`/etc/idleleo/cert/xray.crt` |
 | 로그 디렉터리 | `/etc/idleleo/logs/`、`/var/log/xray/` |
 | Nginx 설치 디렉터리 | `/usr/local/nginx` |
-| 관리 명령 | `/usr/bin/idleleo` |
+| 管理命令 | `/usr/bin/idleleo` |

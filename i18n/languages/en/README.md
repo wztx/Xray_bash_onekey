@@ -1,4 +1,4 @@
-# Xray Management Script — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
+# Xray 管理脚本 — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
 
 Simplified Chinese |[English](/i18n/languages/en/README.md) | [Français](/i18n/languages/fr/README.md) | [Русский](/i18n/languages/ru/README.md) | [فارسی](/i18n/languages/fa/README.md) | [한국어](/i18n/languages/ko/README.md)
 
@@ -18,7 +18,7 @@ Simplified Chinese |[English](/i18n/languages/en/README.md) | [Français](/i18n/
 * Supports scripts, Xray, Nginx and certificate updates, and provides backup and failure rollback for critical updates
 * The current running configuration will be automatically backed up before reinstallation and mode switching, and the original configuration will be restored in case of failure.
 * Reconfiguration provides three safe paths: configuration-preserving redeployment, standard template reconstruction, and mode switching.
-* use[@DuckSoft](https://github.com/DuckSoft)'s sharing link[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), compatible with Qv2ray, V2rayN, V2rayNG
+* 采用 [@DuckSoft](https://github.com/DuckSoft)'s sharing link[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), compatible with Qv2ray, V2rayN, V2rayNG
 * use[XTLS](https://github.com/XTLS/Xray-core/issues/158)proposal, follow[UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3)Standard, supports custom string mapping to VLESS UUID
 * Supports gRPC protocol:[使用 gRPC 协议](https://hey.run/posts/xrayjin-jie-wan-fa---shi-yong-grpcxie-yi)
 * Supports Reality / ws/gRPC/xHTTP load balancing:
@@ -80,7 +80,7 @@ If any step in the reconfiguration process fails (configuration writing, service
 | operate | Order |
 |------|------|
 | Open the admin menu | `idleleo` |
-| View help | `idleleo --help` |
+| 查看帮助 | `idleleo --help` |
 | Install Reality mode | `idleleo --install-reality` |
 | Install TLS mode | `idleleo --install-tls` |
 | Install ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
@@ -94,7 +94,7 @@ If any step in the reconfiguration process fails (configuration writing, service
 
 ## RillML Xray AI Operation and maintenance assistant
 
-RillML (Rill) provides Xray with local adaptive intelligent operations and maintenance capabilities.
+RillML (abbreviated as Rill) provides local adaptive intelligent operation and maintenance capabilities for Xray.
 
 The built-in local AI operation and maintenance assistant monitors the health status of Xray/Nginx in real time, automatically diagnoses faults and gives treatment suggestions, without the need for external API. Main menu input`9`or execute`idleleo --rill-agent`Enter.
 
@@ -152,7 +152,7 @@ The traditional method requires SSH to go to the server, run the installation sc
 * This program depends on Nginx, passed[LNMP](https://lnmp.org)Users who have installed the script Nginx please be aware of potential conflicts.
 * xHTTP shared link is for clients that support xHTTP; Clash configuration output will skip xHTTP
 * Do not use this script in a production environment without first verifying availability
-* Author: Yun Shu, providing limited support only
+* 作者：云舒，仅提供有限支持
 
 ## Acknowledgments
 
@@ -161,19 +161,19 @@ The traditional method requires SSH to go to the server, run the installation sc
 
 ## Certificate configuration
 
-**Custom certificate**: Name the crt and key files respectively.`xray.crt`and`xray.key`, put in`/etc/idleleo/cert`Directory (if the directory does not exist, create it first). Please pay attention to the certificate authority and validity period. After the custom certificate expires, you need to renew it yourself.
+**Custom certificate**: Name the crt and key files respectively.`xray.crt` 和 `xray.key`, put in`/etc/idleleo/cert`Directory (if the directory does not exist, create it first). Please pay attention to the certificate authority and validity period. After the custom certificate expires, you need to renew it yourself.
 
-**Automatic certificate**: The script supports automatically generating Let's Encrypt certificates (valid for 3 months), and theoretically supports automatic renewal.
+**自动证书**：脚本支持自动生成 Let's Encrypt 证书（有效期 3 个月），理论上支持自动续签。
 
-## View client configuration
+## 查看客户端配置
 
 ```bash
 cat /etc/idleleo/info/xray_info.inf
 ```
 
-## Xray Introduction
+## Xray 简介
 
-* Xray is an excellent open source network proxy tool that supports Windows, macOS, Android, iOS, Linux and other full platforms
+* Xray 是一款优秀的开源网络代理工具，支持 Windows、macOS、Android、iOS、Linux 等全平台
 * This script is a one-click complete configuration script. After all processes are completed normally, the client can be used according to the output results.
 * **STRONGLY RECOMMENDED** A comprehensive understanding of the program’s workflow and principles
 
@@ -197,4 +197,4 @@ cat /etc/idleleo/info/xray_info.inf
 | certificate file | `/etc/idleleo/cert/xray.key`、`/etc/idleleo/cert/xray.crt` |
 | Log directory | `/etc/idleleo/logs/`、`/var/log/xray/` |
 | Nginx installation directory | `/usr/local/nginx` |
-| Administrative commands | `/usr/bin/idleleo` |
+| 管理命令 | `/usr/bin/idleleo` |

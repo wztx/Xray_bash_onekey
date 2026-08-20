@@ -11,15 +11,15 @@ Chinois simplifié |[English](/i18n/languages/en/README.md) | [Français](/i18n/
 * entrer`idleleo`Ouvrez le menu de gestion Xray pour gérer l'installation, les services, les paramètres de sécurité, etc.
 * Utilisez Qwen-MT-Plus AI pour obtenir une traduction précise dans plusieurs langues
 * Prend en charge le protocole Reality, il est recommandé d'utiliser le préfixe Nginx (peut être installé dans le script)
-* Prend en charge la transmission WebSocket, gRPC, xHTTP, vous pouvez choisir une transmission unique ou`ws+gRPC+xHTTP`Activer les deux
+* Prend en charge la transmission WebSocket, gRPC, xHTTP, vous pouvez choisir une transmission unique ou`ws+gRPC+xHTTP` 同时启用
 * Prend en charge la double pile IPv4 / IPv6 : peut détecter automatiquement les capacités d'exportation du réseau public lors de l'installation, enregistrer une vérification indépendante basée sur le nom de domaine A/AAAA et générer les liens de partage correspondants et les configurations Clash
 * Protection fail2ban intégrée (installable dans le script)
-* Statistiques de trafic Xray intégrées, blocage du trafic, mise à jour des règles GeoIP/GeoSite et mise à jour régulière
+* 内置 Xray 流量统计、流量阻断、GeoIP/GeoSite 规则更新及定时更新
 * Prend en charge les scripts, Xray, Nginx et les mises à jour de certificats, et fournit une sauvegarde et une restauration en cas d'échec pour les mises à jour critiques.
 * La configuration en cours d'exécution sera automatiquement sauvegardée avant la réinstallation et le changement de mode, et la configuration d'origine sera restaurée en cas de panne.
 * La reconfiguration offre trois voies sûres : le redéploiement en préservant la configuration, la reconstruction du modèle standard et le changement de mode.
-* utiliser[@DuckSoft](https://github.com/DuckSoft)le lien de partage[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), compatible avec Qv2ray, V2rayN, V2rayNG
-* utiliser[XTLS](https://github.com/XTLS/Xray-core/issues/158)proposition, suivre[UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3)Standard, prend en charge le mappage de chaînes personnalisé vers VLESS UUID
+* utiliser[@DuckSoft](https://github.com/DuckSoft) 的分享链接[提案](https://github.com/XTLS/Xray-core/issues/91)(beta), compatible avec Qv2ray, V2rayN, V2rayNG
+* utiliser[XTLS](https://github.com/XTLS/Xray-core/issues/158)proposition, suivre[UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3) 标准，支持自定义字符串映射至 VLESS UUID
 * Prend en charge le protocole gRPC :[使用 gRPC 协议](https://hey.run/posts/xrayjin-jie-wan-fa---shi-yong-grpcxie-yi)
 * Prend en charge l'équilibrage de charge Reality / ws/gRPC/xHTTP :
   - [部署 Reality 负载均衡](https://hey.run/posts/bushu-reality-balance)
@@ -53,7 +53,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/hello-yunshu/Xray_bash_oneke
 
 ## Mode d'installation
 
-| modèle | illustrer |
+| modèle | 说明 |
 |------|------|
 | Reality + Nginx | Mode recommandé, vous pouvez associer un protocole simple ws/gRPC/xHTTP selon vos besoins pour l'équilibrage de charge. |
 | Nginx + TLS | Soutenir ws/gRPC/xHTTP, demander et renouveler automatiquement le certificat Let's Encrypt |
@@ -67,11 +67,11 @@ Facultatif lors de l'installation des modes associés à ws/gRPC/xHTTP`ws`、`gR
 
 Lorsque l'environnement installé est à nouveau installé, le script sauvegarde automatiquement la configuration en cours d'exécution et fournit trois chemins de reconfiguration :
 
-| chemin | illustrer | limite |
+| chemin | 说明 | limite |
 |------|------|------|
 | Préserver le redéploiement de la configuration | Conservez la configuration routing/outbounds/DNS personnalisée et multi-utilisateurs, modifiez uniquement les champs sélectionnés par l'utilisateur (ports, chemins, paramètres UUID, Reality, etc.) | Les modifications de la structure de transmission (telles que ws → gRPC) ne sont pas prises en charge. Si vous devez modifier la combinaison de transmission, veuillez utiliser le modèle standard pour la reconstruire. |
 | Reconstruction de modèle standard | Générez une configuration de modèle standard à l'aide des paramètres réutilisables actuels, le routing/outbounds/DNS personnalisé peut être supprimé | Il n'est pas obligatoire que le nombre d'utilisateurs reste inchangé |
-| Changement de mode | Passez à un autre mode de protocole (tel que Reality → TLS). Par défaut, seul l'utilisateur principal UUID/email est réutilisé. | Les autres utilisateurs ne seront pas automatiquement migrés et seront clairement invités avant de changer. |
+| 模式切换 | Passez à un autre mode de protocole (tel que Reality → TLS). Par défaut, seul l'utilisateur principal UUID/email est réutilisé. | Les autres utilisateurs ne seront pas automatiquement migrés et seront clairement invités avant de changer. |
 
 Si une étape du processus de reconfiguration échoue (écriture de la configuration, démarrage du service, vérification de l'état, etc.), elle reviendra automatiquement à la configuration de sauvegarde d'origine. Le répertoire de sauvegarde utilise un horodatage unique pour prendre en charge plusieurs reconfigurations consécutives sans entrer en conflit les unes avec les autres.
 
@@ -80,7 +80,7 @@ Si une étape du processus de reconfiguration échoue (écriture de la configura
 | fonctionner | Commande |
 |------|------|
 | Ouvrez le menu d'administration | `idleleo` |
-| Afficher l'aide | `idleleo --help` |
+| 查看帮助 | `idleleo --help` |
 | Installer le mode Reality | `idleleo --install-reality` |
 | Installer le mode TLS | `idleleo --install-tls` |
 | Installer ws/gRPC/xHTTP ONLY | `idleleo --install-none` |
@@ -88,13 +88,13 @@ Si une étape du processus de reconfiguration échoue (écriture de la configura
 | script de mise à jour | `idleleo --update` |
 | Mettre à jour Xray | `idleleo --xray-update` |
 | Mettre à jour Nginx | `idleleo --nginx-update` |
-| Définir Fail2ban | `idleleo --set-fail2ban` |
+| 设置 Fail2ban | `idleleo --set-fail2ban` |
 | Configurer le blocage du trafic | `idleleo --traffic-blocker` |
-| Visualisez le trafic portuaire en temps réel | `idleleo --port-traffic` |
+| 查看端口实时流量 | `idleleo --port-traffic` |
 
 ## RillML Xray AI Assistant d'exploitation et de maintenance
 
-RillML (Rill) fournit à Xray des capacités locales d'exploitation et de maintenance intelligentes et adaptatives.
+RillML (en abrégé Rill) fournit des capacités locales adaptatives intelligentes d'exploitation et de maintenance pour Xray.
 
 L'assistant d'exploitation et de maintenance local AI intégré surveille l'état de santé de Xray/Nginx en temps réel, diagnostique automatiquement les défauts et donne des suggestions de traitement, sans avoir besoin d'un API externe. Entrée du menu principal`9`ou exécuter`idleleo --rill-agent`Entrer.
 
@@ -143,7 +143,7 @@ La méthode traditionnelle nécessite que SSH accède au serveur, exécute le sc
 ## Choses à noter
 
 * Si vous ne comprenez pas la signification de chaque paramètre, veuillez utiliser la valeur par défaut, à l'exception des champs obligatoires (appuyez simplement sur Entrée)
-* Cloudflare Les utilisateurs doivent ouvrir CDN une fois l'installation terminée.
+* Cloudflare 用户请在安装完成后再开启 CDN
 * Ce script nécessite une connaissance de base de Linux et une connaissance des réseaux informatiques.
 * Prend en charge Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+, certains modèles CentOS peuvent avoir des problèmes de compilation, il est recommandé de changer de système en cas de problèmes
 * Il est recommandé qu'un seul serveur ne déploie qu'un seul agent et utilise le port par défaut 443.
@@ -171,7 +171,7 @@ La méthode traditionnelle nécessite que SSH accède au serveur, exécute le sc
 cat /etc/idleleo/info/xray_info.inf
 ```
 
-## Xray Introduction
+## Xray 简介
 
 * Xray est un excellent outil proxy réseau open source qui prend en charge Windows, macOS, Android, iOS, Linux et d'autres plates-formes complètes.
 * Ce script est un script de configuration complet en un clic. Une fois que tous les processus sont terminés normalement, le client peut être utilisé en fonction des résultats de sortie.
@@ -190,10 +190,10 @@ cat /etc/idleleo/info/xray_info.inf
 
 | contenu | chemin |
 |------|------|
-| Répertoire personnel | `/etc/idleleo` |
+| 主目录 | `/etc/idleleo` |
 | Configuration Xray | `/etc/idleleo/conf/xray/config.json` |
 | Configuration Nginx | `/etc/idleleo/conf/nginx/` |
-| Informations d'installation | `/etc/idleleo/conf/install_config.json` |
+| 安装信息 | `/etc/idleleo/conf/install_config.json` |
 | fichier de certificat | `/etc/idleleo/cert/xray.key`、`/etc/idleleo/cert/xray.crt` |
 | Répertoire des journaux | `/etc/idleleo/logs/`、`/var/log/xray/` |
 | Répertoire d'installation Nginx | `/usr/local/nginx` |

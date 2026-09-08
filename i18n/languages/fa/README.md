@@ -1,25 +1,25 @@
-# Xray اسکریپت مدیریت — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
+# Xray 管理脚本 — Reality / VLESS WebSocket/gRPC/xHTTP+TLS + Nginx
 
-چینی ساده شده |[English](/i18n/languages/en/README.md) | [Français](/i18n/languages/fr/README.md) | [Русский](/i18n/languages/ru/README.md) | [فارسی](/i18n/languages/fa/README.md) | [한국어](/i18n/languages/ko/README.md)
+简体中文 | [English](/i18n/languages/en/README.md) | [Français](/i18n/languages/fr/README.md) | [Русский](/i18n/languages/ru/README.md) | [فارسی](/i18n/languages/fa/README.md) | [한국어](/i18n/languages/ko/README.md)
 
 [![GitHub stars](https://img.shields.io/github/stars/hello-yunshu/Xray_bash_onekey?color=%230885ce)](https://github.com/hello-yunshu/Xray_bash_onekey/stargazers) [![GitHub forks](https://img.shields.io/github/forks/hello-yunshu/Xray_bash_onekey?color=%230885ce)](https://github.com/hello-yunshu/Xray_bash_onekey/network) [![GitHub issues](https://img.shields.io/github/issues/hello-yunshu/Xray_bash_onekey)](https://github.com/hello-yunshu/Xray_bash_onekey/issues)
 
 > Thanks for non-commercial open source development authorization by JetBrains
 
-## ویژگی ها
+## 功能特性
 
-* وارد کنید`idleleo` 打开 Xray 管理菜单，管理安装、服务、安全设置等
-* برای دستیابی به ترجمه دقیق به چندین زبان، از Qwen-MT-Plus AI استفاده کنید
-* از پروتکل Reality پشتیبانی می کند، توصیه می شود از پیشوند Nginx استفاده کنید (قابل نصب در اسکریپت)
-* از انتقال WebSocket، gRPC، xHTTP پشتیبانی می کند، می توانید انتقال تک یا`ws+gRPC+xHTTP`هر دو را فعال کنید
-* پشته دوتایی IPv4 / IPv6 را پشتیبانی می کند: می تواند به طور خودکار قابلیت های صادرات شبکه عمومی را در حین نصب شناسایی کند، تأیید مستقل را بر اساس نام دامنه A/AAAA ثبت کند و پیوندهای اشتراک گذاری مربوطه و تنظیمات Clash را ایجاد کند.
-* محافظت داخلی fail2ban (قابل نصب در اسکریپت)
-* آمار ترافیک Xray داخلی، مسدود کردن ترافیک، به‌روزرسانی قانون GeoIP/GeoSite و به‌روزرسانی منظم
-* از اسکریپت‌ها، Xray، Nginx و به‌روزرسانی‌های گواهی پشتیبانی می‌کند و برای به‌روزرسانی‌های حیاتی، پشتیبان‌گیری و بازگشت خرابی را فراهم می‌کند.
-* از پیکربندی فعلی در حال اجرا قبل از نصب مجدد و تغییر حالت به طور خودکار پشتیبان گیری می شود و در صورت خرابی پیکربندی اولیه بازیابی می شود.
-* پیکربندی مجدد سه مسیر امن را فراهم می کند: استقرار مجدد با حفظ پیکربندی، بازسازی الگوی استاندارد و تغییر حالت.
-* استفاده کنید[@DuckSoft](https://github.com/DuckSoft)لینک به اشتراک گذاری[提案](https://github.com/XTLS/Xray-core/issues/91)（beta），兼容 Qv2ray、V2rayN、V2rayNG
-* استفاده کنید[XTLS](https://github.com/XTLS/Xray-core/issues/158) 提案，遵循 [UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3) 标准，支持自定义字符串映射至 VLESS UUID
+* 输入 `idleleo` 打开 Xray 管理菜单，管理安装、服务、安全设置等
+* 采用 Qwen-MT-Plus AI 实现多语言精准翻译
+* 支持 Reality 协议，建议搭配 Nginx 前置（脚本内可安装）
+* 支持 WebSocket、gRPC、xHTTP 传输，可选择单一传输或 `ws+gRPC+xHTTP` 同时启用
+* 支持 IPv4 / IPv6 双栈：安装时可自动检测公网出口能力，按域名 A/AAAA 记录独立校验并生成对应分享链接与 Clash 配置
+* 内置 fail2ban 防护（脚本内可安装）
+* 内置 Xray 流量统计、流量阻断、GeoIP/GeoSite 规则更新及定时更新
+* 支持脚本、Xray、Nginx 和证书更新，并为关键更新提供备份与失败回滚
+* 重新安装和模式切换前会自动备份当前运行配置，失败时恢复原配置
+* 重配置提供三条安全路径：保留配置重新部署、标准模板重建、模式切换
+* 采用 [@DuckSoft](https://github.com/DuckSoft) 的分享链接[提案](https://github.com/XTLS/Xray-core/issues/91)（beta），兼容 Qv2ray、V2rayN、V2rayNG
+* 采用 [XTLS](https://github.com/XTLS/Xray-core/issues/158) 提案，遵循 [UUIDv5](https://tools.ietf.org/html/rfc4122#section-4.3) 标准，支持自定义字符串映射至 VLESS UUID
 * 支持 gRPC 协议：[使用 gRPC 协议](https://hey.run/posts/xrayjin-jie-wan-fa---shi-yong-grpcxie-yi)
 * 支持 Reality / ws/gRPC/xHTTP 负载均衡：
   - [部署 Reality 负载均衡](https://hey.run/posts/bushu-reality-balance)
@@ -61,7 +61,7 @@ bash <(curl -fsSL https://github.com/hello-yunshu/Xray_bash_onekey/releases/late
 | XTLS ONLY | 仅用于流量中转等特定场景 |
 | Docker | 镜像内预装 Xray、Nginx 与主脚本 |
 
-安装 ws/gRPC/xHTTP 相关模式时，可选择 `ws`、`gRPC`、`xHTTP` 或 `ws+gRPC+xHTTP`. اسکریپت به ترتیب پورت، مسیر، لینک اشتراک گذاری و کد QR مربوطه را تولید می کند. Clash در حال حاضر xHTTP را پشتیبانی نمی کند، و اسکریپت در خروجی پیکربندی درخواست می کند.
+安装 ws/gRPC/xHTTP 相关模式时，可选择 `ws`、`gRPC`、`xHTTP` 或 `ws+gRPC+xHTTP`。脚本会分别生成对应端口、路径、分享链接和二维码；Clash 目前不支持 xHTTP，脚本会在配置输出中提示。
 
 ## 重配置说明
 
@@ -152,49 +152,49 @@ docker attach xray-onekey
 * 本程序依赖 Nginx，已通过 [LNMP](https://lnmp.org) 等脚本安装过 Nginx 的用户请注意潜在冲突
 * xHTTP 分享链接适用于支持 xHTTP 的客户端；Clash 配置输出会跳过 xHTTP
 * 请勿在未验证可用性前将本脚本用于生产环境
-* 作者：云舒，仅提供有限支持
+* نویسنده: یون شو، تنها پشتیبانی محدودی ارائه می کند
 
-## 鸣谢
+## قدردانی ها
 
-* 基于 [wulabing/V2Ray_ws-tls_bash_onekey](https://github.com/wulabing/V2Ray_ws-tls_bash_onekey) 开发
+* بر اساس[wulabing/V2Ray_ws-tls_bash_onekey](https://github.com/wulabing/V2Ray_ws-tls_bash_onekey) 开发
 * TCP 加速脚本引用自 [ylx2016/Linux-NetSpeed](https://github.com/ylx2016/Linux-NetSpeed)
 
 ## 证书配置
 
-**自定义证书**：将 crt 和 key 文件分别命名为 `xray.crt` 和 `xray.key`，放入 `/etc/idleleo/cert` 目录（目录不存在则先创建）。请注意证书权限及有效期，自定义证书过期后需自行续签。
+**گواهی سفارشی**: فایل های crt و key را به ترتیب نام گذاری کنید.`xray.crt`و`xray.key`，放入 `/etc/idleleo/cert` 目录（目录不存在则先创建）。请注意证书权限及有效期，自定义证书过期后需自行续签。
 
 **自动证书**：脚本支持自动生成 Let's Encrypt 证书（有效期 3 个月），理论上支持自动续签。
 
-## 查看客户端配置
+## مشاهده پیکربندی مشتری
 
 ```bash
 cat /etc/idleleo/info/xray_info.inf
 ```
 
-## Xray 简介
+## Xray مقدمه
 
-* Xray 是一款优秀的开源网络代理工具，支持 Windows、macOS、Android、iOS、Linux 等全平台
-* 本脚本为一键完整配置脚本，所有流程正常完成后，按输出结果设置客户端即可使用
+* Xray یک ابزار پروکسی شبکه منبع باز عالی است که از Windows، macOS، Android، iOS، Linux و دیگر پلتفرم های کامل پشتیبانی می کند.
+* این اسکریپت یک اسکریپت پیکربندی کامل با یک کلیک است. پس از اینکه تمام فرآیندها به طور معمول تکمیل شدند، می توان از مشتری با توجه به نتایج خروجی استفاده کرد.
 * **强烈建议**全面了解程序的工作流程及原理
 
-## 服务管理
+## مدیریت خدمات
 
-| 操作 | سفارش دهید |
+| عمل کنند | 命令 |
 |------|------|
-| 启动 Xray | `systemctl start xray` |
-| 停止 Xray | `systemctl stop xray` |
-| 启动 Nginx | `systemctl start nginx` |
-| 停止 Nginx | `systemctl stop nginx` |
+| شروع Xray | `systemctl start xray` |
+| توقف Xray | `systemctl stop xray` |
+| شروع Nginx | `systemctl start nginx` |
+| توقف Nginx | `systemctl stop nginx` |
 
-## 相关目录
+## کاتالوگ مرتبط
 
 | محتوا | مسیر |
 |------|------|
 | دایرکتوری صفحه اصلی | `/etc/idleleo` |
-| Xray 配置 | `/etc/idleleo/conf/xray/config.json` |
-| Nginx 配置 | `/etc/idleleo/conf/nginx/` |
-| 安装信息 | `/etc/idleleo/conf/install_config.json` |
-| 证书文件 | `/etc/idleleo/cert/xray.key`、`/etc/idleleo/cert/xray.crt` |
+| پیکربندی Xray | `/etc/idleleo/conf/xray/config.json` |
+| پیکربندی Nginx | `/etc/idleleo/conf/nginx/` |
+| اطلاعات نصب | `/etc/idleleo/conf/install_config.json` |
+| فایل گواهی | `/etc/idleleo/cert/xray.key`、`/etc/idleleo/cert/xray.crt` |
 | 日志目录 | `/etc/idleleo/logs/`、`/var/log/xray/` |
 | Nginx 安装目录 | `/usr/local/nginx` |
 | 管理命令 | `/usr/bin/idleleo` |

@@ -168,6 +168,12 @@ const (
 	defaultGRPCService = "idleleo-grpc"
 	defaultEmail       = "me@hey.run"
 	defaultRealityFlow = "xtls-rprx-vision"
+
+	// DefaultCertFile/DefaultKeyFile are the pair Bash installs for every TLS
+	// site. They are exported because an in-place edit has to keep comparing
+	// against the same default the generator applies.
+	DefaultCertFile = "/etc/idleleo/cert/xray.crt"
+	DefaultKeyFile  = "/etc/idleleo/cert/xray.key"
 )
 
 // Generate builds one configuration and its client artifacts. Secrets are
@@ -296,10 +302,10 @@ func Generate(spec Spec) (Generated, error) {
 	if spec.CertFile == "" && spec.Domain != "" {
 		// Bash installs one well-known pair under /etc/idleleo/cert and points
 		// every TLS site at it; --cert/--key still override.
-		spec.CertFile = "/etc/idleleo/cert/xray.crt"
+		spec.CertFile = DefaultCertFile
 	}
 	if spec.KeyFile == "" && spec.Domain != "" {
-		spec.KeyFile = "/etc/idleleo/cert/xray.key"
+		spec.KeyFile = DefaultKeyFile
 	}
 
 	serverName := ""

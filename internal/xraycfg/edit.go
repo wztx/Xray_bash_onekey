@@ -15,6 +15,10 @@ type EditDefaults struct {
 	Mode       string
 	PublicPort int
 	Domain     string
+	// CertFile/KeyFile are the certificate pair the TLS front currently
+	// serves, read back from Nginx. They are empty for every non-TLS mode.
+	CertFile string
+	KeyFile  string
 }
 
 // EditRequest carries the operator overrides for `xray config edit`. Zero
@@ -34,6 +38,9 @@ type EditRequest struct {
 	WSPort           int
 	GRPCPort         int
 	XHTTPPort        int
+	Domain           string
+	CertFile         string
+	KeyFile          string
 	AllowNonLoopback bool
 }
 
@@ -50,8 +57,13 @@ type EditResult struct {
 	// used by the edit path to probe the origin before saving.
 	Target      string
 	ServerNames []string
-	Disconnect  bool
-	NoChanges   bool
+	// Domain/CertFile/KeyFile are the effective TLS values after the patch,
+	// used by the edit path to validate the certificate and probe the handshake.
+	Domain     string
+	CertFile   string
+	KeyFile    string
+	Disconnect bool
+	NoChanges  bool
 	// Diff lists the changed runtime paths, so --dry-run and the confirmation
 	// prompt can show exactly what would move.
 	Diff []string
@@ -108,11 +120,28 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 		Listen:      spec.Listen,
 		Target:      spec.Target,
 		ServerNames: append([]string(nil), spec.ServerNames...),
+		Domain:      spec.Domain,
+		CertFile:    spec.CertFile,
+		KeyFile:     spec.KeyFile,
 		Disconnect:  disconnectProne(changed),
-		NoChanges:   len(changed) == 0 || len(diffs) == 0,
+		NoChanges:   len(changed) == 0 || (len(diffs) == 0 && !nginxOnlyChange(changed)),
 		Diff:        diffs,
 	}
 	return g, res, nil
+}
+
+// nginxOnlyChange reports whether the patch only moved front-owned values.
+// The TLS domain and certificate paths never appear in the Xray runtime JSON,
+// so an empty runtime diff is not a no-op: the Nginx tree still has to be
+// rewritten and reloaded.
+func nginxOnlyChange(changed []string) bool {
+	for _, field := range changed {
+		switch field {
+		case "domain", "cert-file", "cert-key-file":
+			return true
+		}
+	}
+	return false
 }
 
 func disconnectProne(changed []string) bool {
@@ -291,6 +320,33 @@ func applyEditRequest(spec *Spec, base EditDefaults, req EditRequest) ([]string,
 	if req.AllowNonLoopback {
 		spec.AllowNonLoopback = true
 	}
+	if req.Domain != "" {
+		if base.Mode != ModeTLS {
+			return nil, fmt.Errorf("--domain only applies to TLS installs; use --server-names for Reality")
+		}
+		if req.Domain != spec.Domain {
+			spec.Domain = req.Domain
+			changed = append(changed, "domain")
+		}
+	}
+	if req.CertFile != "" {
+		if base.Mode != ModeTLS {
+			return nil, fmt.Errorf("--cert only applies to TLS installs; Reality has no certificate")
+		}
+		if req.CertFile != spec.CertFile {
+			spec.CertFile = req.CertFile
+			changed = append(changed, "cert-file")
+		}
+	}
+	if req.KeyFile != "" {
+		if base.Mode != ModeTLS {
+			return nil, fmt.Errorf("--cert-key only applies to TLS installs; Reality has no certificate")
+		}
+		if req.KeyFile != spec.KeyFile {
+			spec.KeyFile = req.KeyFile
+			changed = append(changed, "cert-key-file")
+		}
+	}
 	return changed, nil
 }
 
@@ -309,12 +365,22 @@ func editSpecFromRuntime(root map[string]any, base EditDefaults) (Spec, bool, er
 		Listen:      asString(first["listen"]),
 		PublicPort:  base.PublicPort,
 		Domain:      base.Domain,
+		CertFile:    base.CertFile,
+		KeyFile:     base.KeyFile,
 		Path:        defaultPath,
 		ServiceName: defaultGRPCService,
 	}
 	if base.Mode == ModeTLS {
-		// TLS keeps Xray on a pool port; the public port lives in Nginx.
+		// TLS keeps Xray on a pool port; the public port lives in Nginx. When
+		// the front predates CertFile parsing, fall back to the generator
+		// default so the comparison stays honest.
 		spec.Port = base.PublicPort
+		if spec.CertFile == "" {
+			spec.CertFile = DefaultCertFile
+		}
+		if spec.KeyFile == "" {
+			spec.KeyFile = DefaultKeyFile
+		}
 	}
 	networks := make([]string, 0, len(inbounds))
 	var uuid, email, flow, wsPath, xhttpPath string

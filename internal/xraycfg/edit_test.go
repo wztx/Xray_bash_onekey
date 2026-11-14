@@ -196,3 +196,90 @@ func mustMarshal(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
 }
+
+func editTLSBase(t *testing.T) ([]byte, EditDefaults) {
+	t.Helper()
+	stubCanBind(t, func(string, int) bool { return true })
+	g, err := Generate(Spec{
+		Mode: ModeTLS, Transport: TransportWS, Domain: "example.com",
+		Port: 10080, WSPort: 10080, PublicPort: 8443,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g.Config, EditDefaults{
+		Mode: ModeTLS, PublicPort: 8443, Domain: "example.com",
+		CertFile: DefaultCertFile, KeyFile: DefaultKeyFile,
+	}
+}
+
+func TestEditTLSDomainRewritesNginxWithoutRuntimeDiff(t *testing.T) {
+	raw, base := editTLSBase(t)
+	g, res, err := EditRuntime(raw, base, EditRequest{Domain: "new.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NoChanges {
+		t.Fatalf("a domain edit must not be reported as no-op: %+v", res)
+	}
+	if res.Domain != "new.example.com" {
+		t.Fatalf("domain = %q", res.Domain)
+	}
+	if len(res.Diff) != 0 {
+		t.Fatalf("the TLS domain is front-owned; runtime diff = %v", res.Diff)
+	}
+	if !strings.Contains(g.NginxConf, "server_name           new.example.com;") {
+		t.Fatalf("nginx server_name not rewritten:\n%s", g.NginxConf)
+	}
+	if !strings.Contains(g.NginxConf, DefaultCertFile) || !strings.Contains(g.NginxConf, DefaultKeyFile) {
+		t.Fatal("a domain edit must keep the configured certificate pair")
+	}
+	if diff, err := diffRuntime(raw, g.Config); err != nil || len(diff) != 0 {
+		t.Fatalf("runtime config changed: diff=%v err=%v", diff, err)
+	}
+}
+
+func TestEditTLSCertificatePairIsAFrontOwnedChange(t *testing.T) {
+	raw, base := editTLSBase(t)
+	g, res, err := EditRuntime(raw, base, EditRequest{
+		CertFile: "/etc/idleleo/cert/example.com.crt", KeyFile: "/etc/idleleo/cert/example.com.key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NoChanges {
+		t.Fatalf("a certificate edit must rewrite Nginx: %+v", res)
+	}
+	if !strings.Contains(g.NginxConf, "ssl_certificate       /etc/idleleo/cert/example.com.crt;") {
+		t.Fatalf("certificate path not applied:\n%s", g.NginxConf)
+	}
+	if !strings.Contains(g.NginxConf, "ssl_certificate_key   /etc/idleleo/cert/example.com.key;") {
+		t.Fatalf("key path not applied:\n%s", g.NginxConf)
+	}
+	if res.CertFile != "/etc/idleleo/cert/example.com.crt" || res.KeyFile != "/etc/idleleo/cert/example.com.key" {
+		t.Fatalf("effective pair = %q %q", res.CertFile, res.KeyFile)
+	}
+}
+
+func TestEditTLSNoOpWhenValuesMatch(t *testing.T) {
+	raw, base := editTLSBase(t)
+	_, res, err := EditRuntime(raw, base, EditRequest{Domain: "example.com", CertFile: DefaultCertFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.NoChanges {
+		t.Fatalf("repeating the live values must be a no-op: %+v", res)
+	}
+}
+
+func TestEditRejectsTLSOwnedFieldsOutsideTLSMode(t *testing.T) {
+	raw := editBase(t)
+	if _, _, err := EditRuntime(raw, EditDefaults{Mode: ModeReality, PublicPort: 443},
+		EditRequest{Domain: "example.com"}); err == nil || !strings.Contains(err.Error(), "TLS") {
+		t.Fatalf("reality must reject --domain, got %v", err)
+	}
+	if _, _, err := EditRuntime(raw, EditDefaults{Mode: ModeReality, PublicPort: 443},
+		EditRequest{CertFile: "/tmp/a.crt"}); err == nil || !strings.Contains(err.Error(), "TLS") {
+		t.Fatalf("reality must reject --cert, got %v", err)
+	}
+}

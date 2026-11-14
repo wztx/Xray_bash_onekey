@@ -14,7 +14,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func fakeELF(arch string) []byte {
@@ -164,6 +166,100 @@ func TestResolveDownloadsAndVerifies(t *testing.T) {
 	}
 	if err := VerifyBinary(filepath.Join(dest, "nginx/sbin/nginx"), art.Asset.BinarySHA256, "arm"); err != nil {
 		t.Fatalf("VerifyBinary: %v", err)
+	}
+}
+
+func TestDefaultClientTimeoutMatchesBash(t *testing.T) {
+	if got := (Options{}).client().Timeout; got != 300*time.Second {
+		t.Fatalf("default download timeout = %v, want 300s", got)
+	}
+}
+
+func TestDownloadVerifiedRetriesTransientFailures(t *testing.T) {
+	bin := fakeELF("arm")
+	artifact := tarGz(t, []tarEntry{{name: "nginx/sbin/nginx", typ: tar.TypeReg, mode: 0o755, body: bin}})
+	a := manifestFor(t, "arm", artifact, bin).Assets[0]
+
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		n := calls
+		mu.Unlock()
+		if n < 3 {
+			http.Error(w, "upstream busy", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write(artifact)
+	}))
+	defer srv.Close()
+
+	got, err := DownloadVerified(context.Background(),
+		&http.Client{Timeout: 10 * time.Second}, srv.URL+"/xray-nginx-custom-arm.tar.gz", a)
+	if err != nil {
+		t.Fatalf("DownloadVerified should succeed on the third attempt: %v", err)
+	}
+	if !bytes.Equal(got, artifact) {
+		t.Fatal("retried download returned a different artifact")
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts (2 retries), got %d", calls)
+	}
+}
+
+func TestDownloadVerifiedStopsAfterTwoRetries(t *testing.T) {
+	bin := fakeELF("arm")
+	artifact := tarGz(t, []tarEntry{{name: "nginx/sbin/nginx", typ: tar.TypeReg, mode: 0o755, body: bin}})
+	a := manifestFor(t, "arm", artifact, bin).Assets[0]
+
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		http.Error(w, "upstream busy", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	if _, err := DownloadVerified(context.Background(),
+		&http.Client{Timeout: 10 * time.Second}, srv.URL+"/xray-nginx-custom-arm.tar.gz", a); err == nil {
+		t.Fatal("persistent 503 must fail the download")
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts before giving up, got %d", calls)
+	}
+}
+
+func TestDownloadVerifiedDoesNotRetryDigestMismatch(t *testing.T) {
+	bin := fakeELF("arm")
+	artifact := tarGz(t, []tarEntry{{name: "nginx/sbin/nginx", typ: tar.TypeReg, mode: 0o755, body: bin}})
+	a := manifestFor(t, "arm", artifact, bin).Assets[0]
+	a.SHA256 = strings.Repeat("0", 64)
+
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		w.Write(artifact)
+	}))
+	defer srv.Close()
+
+	if _, err := DownloadVerified(context.Background(),
+		&http.Client{Timeout: 10 * time.Second}, srv.URL+"/xray-nginx-custom-arm.tar.gz", a); err == nil {
+		t.Fatal("digest mismatch must fail")
+	}
+	if calls != 1 {
+		t.Fatalf("digest mismatch must not be retried, got %d attempts", calls)
 	}
 }
 

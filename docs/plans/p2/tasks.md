@@ -198,7 +198,26 @@
       标记后端只做 TCP 应答，故只证明 stream 选路与摘除，**不外推 Reality 握手**。
     - harness 在两侧删除安装自带的回环后端：`xray balance remove` 按设计拒绝删回环，
       没有对称的菜单入口；删除动作与原因记录在 `ops.json` 的 `loopbackRemovedBy`。
-- [ ] S3 证书路径/域名。
+- [x] S3 证书路径/域名（G16/G17）。
+  - 入口保持 `xray config edit`：新增 `--domain/--cert/--cert-key`，仅 TLS 生效；
+    Reality 指路 `--server-names`，reality/reality-balance 一律拒绝。
+  - 可改与不可改：域名、证书路径、私钥路径可改；CA 类型、签发方式、SAN 列表不可改
+    （SAN 由证书本身决定，只校验并写入报告），改域名不自动签证书。
+  - 写入前交叉校验：证书/私钥必须成对、证书 SAN 必须覆盖目标域名（即「改域名但证书还是
+    旧域名」直接拒绝）、不能过期/未生效；30 天内到期与私钥全局可读只 warning。
+  - 默认对新域名做本地 TLS 握手（`127.0.0.1:<public-port>`，SNI=新域名，校验 served leaf
+    与配置证书一致、SAN、有效期、TLS 1.3；系统根不信任只 warning）；`--no-probe` 关闭；
+    服务未监听记 warning 并标 `skipped`，不算通过。`--no-restart` 时同样只标 `skipped`。
+  - 仅前端变更时 runtime JSON 不变：不再误判 `NoChanges`，强制重写 Nginx 并 reload；
+    **不重启 Xray**，避免无谓断线。
+  - 续期链路：`jobs.json` 的 `certDomain/certFile/certKeyFile` 随编辑更新（路径转成相对根）；
+    `cert-renew` 优先观测 `cfg.certFile`；不自动重签、不重装 hook。
+  - 备份追加 `tls-cert.pem`/`tls-key.pem`（0600，不回显）/`schedule-jobs.json`，失败连同
+    `jobs.json` 一起回滚；Bash 根与 `provenance!=native` 的导入根在写入前拒绝（G17）。
+  - 单测：`go test ./internal/xraycfg ./internal/deploy ./internal/schedule`（域名/证书
+    rewrite、SAN/过期/配对拒绝、近到期与私钥权限 warning、握手 ok/skipped/失败三态、
+    备份内容、Bash 根拒绝、jobs.json 更新与观测优先级）。
+  - 已知差异：不自动重签（G16，与 G15 分开登记）。
 - [ ] S4 Reality 握手参数。
 - [ ] C2 流量阻断 ruleset（ED-003）。
 - [ ] C5 多用户 UUID 单点修改。

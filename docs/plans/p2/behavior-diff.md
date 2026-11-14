@@ -155,4 +155,18 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
   - **限制（不得外推）**：reality 侧的对端是普通 TCP 标记服务，不做 Reality 握手；
     本项只证明 nginx stream 的对端选择与被动摘除，不证明 Reality/VLESS 端到端会话。
   - 注：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，故不存在全局统一静默窗。
+- G16：TLS 域名/证书编辑**不自动重签**（与 bash 的显式差异，不属于 ED）：
+  - `xray config edit --domain/--cert/--cert-key` 只改 Nginx 引用与 `jobs.json` 的
+    `certDomain`/`certFile`/`certKeyFile`，**不发起任何 ACME 网络请求**；证书不覆盖新域名
+    （SAN/CN 不匹配，即「改域名但证书还是旧域名」）时直接拒绝，零落盘。
+  - 续期链路：Go 不使用 certbot/hook；`jobs.json` 是续期唯一取值来源，`cert-renew` 任务
+    优先观测 `cfg.certFile`（旧目录扫描仅作回退）。编辑后未重签时，证书仍在 30 天内到期
+    只给 warning，并提示 `idleleo schedule run --job cert-renew`（或 `xray cert renew`）。
+  - 与 G15 分开登记：G15 是 upstream 被动摘除，本条是证书生命周期，二者不得互相引用为
+    「同一差异」。
+- G17：Bash 安装根**拒绝编辑**（主动收紧，不进 ED）：
+  - 根下存在 `etc/idleleo/conf/install_config.json`，或 `metadata.provenance` 非 `native`
+    （`legacy` 等导入根）时，`xray config edit` 在写入前 rc=2、零落盘，报错指路先迁移。
+  - 理由：静默只改两套管理链路中的一套，会让重启后的 Bootstrap 配置覆盖本次编辑，比拒绝
+    更危险。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

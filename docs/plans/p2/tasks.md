@@ -59,10 +59,13 @@
 
 ## T7 全量复跑与矩阵
 
-- [ ] 小样：M1/M3/M4/M9/M10 两侧 × 2 轮。
-- [ ] 全量：M1–M10 × 两侧 × 2 轮；HARNESS-ERROR 仅按规则重跑。
-- [ ] 产出 `evidence/<run-id>/p2/install-matrix.md`，附前后对比与保留差异。
-- 验证：无未归因 HARNESS-ERROR；M8 仍 HARNESS-BLOCKED；M3/M10 不再出现 capability-gap。
+- [x] 小样：M1/M3/M4/M9/M10 两侧 × 2 轮。
+- [x] 全量：M1–M10 × 两侧 × 2 轮；HARNESS-ERROR 仅按规则重跑（M6/M10 bash 首轮超时重跑一次）。
+- [x] 产出 `evidence/final-full2-8863b10/p2/install-matrix.md`，附基线对比与保留差异。
+- [x] 修复两处测试/实现缺陷：bash 第 2 轮不再用空占位覆盖第 1 轮配置（否则 L6 从未真正验证）；
+  重复安装 `--keep-config` 依据 `00-xray.conf` 恢复 Nginx 前置模式（否则前置场景第 2 轮丢 Nginx）。
+- 验证：M1–M7/M9/M10 两侧 rc/L4 两轮/rc2/L6 全部通过；M8 仍 HARNESS-BLOCKED；
+  剩余 BLOCKER 仅由 pending EXPECTED-DIFF 引起。
 
 ## T8 提交与汇报
 

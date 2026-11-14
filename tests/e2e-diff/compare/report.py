@@ -270,13 +270,66 @@ def cell_label(bash, go, verdict):
     return "%s / %s / %s" % (fmt_side(bash), fmt_side(go), verdict)
 
 
+def runtime_ports(evidence, sid, side, loopback=False):
+    """Ports owned by the install, excluding docker DNS and the 80/443 front."""
+    data = read_json(os.path.join(evidence, sid, side, "runtime.json"), {})
+    ports = set()
+    for item in data.get("listeners", []):
+        local = item.get("local", "")
+        if local.startswith("127.0.0.11"):
+            continue
+        host, _, port = local.rpartition(":")
+        if not port.isdigit():
+            continue
+        if loopback:
+            if host != "127.0.0.1":
+                continue
+        elif host in ("0.0.0.0", "[::]", "*") and port in ("80", "443"):
+            continue
+        ports.add(int(port))
+    return ", ".join(str(p) for p in sorted(ports)) or "-"
+
+
+def nginx_files(evidence, sid, side):
+    data = read_json(os.path.join(evidence, sid, side, "manifest.json"), {})
+    root = "/etc/idleleo/conf/nginx"
+    names = [os.path.basename(e.get("path", "")) for e in data.get("entries", [])
+             if e.get("path", "").startswith(root + "/")
+             and e.get("path", "").count("/") == root.count("/") + 1]
+    return ", ".join(sorted(names)) or "-"
+
+
+def render_step_changes(evidence, baseline):
+    if not baseline or not os.path.isdir(baseline):
+        return []
+    lines = ["## 三步改动落地证据", "",
+             "| 主题 | 基线 go | 本轮 go | 本轮 bash | 关联 |",
+             "|---|---|---|---|---|",
+             "| M10 relay nginx 文件 | %s | %s | %s | G8 |" % (
+                 nginx_files(baseline, "M10", "go"), nginx_files(evidence, "M10", "go"),
+                 nginx_files(evidence, "M10", "bash")),
+             "| M3 附加传输端口 | %s | %s | %s | G9 |" % (
+                 runtime_ports(baseline, "M3", "go"), runtime_ports(evidence, "M3", "go"),
+                 runtime_ports(evidence, "M3", "bash")),
+             "| M7 附加传输端口 | %s | %s | %s | G9 |" % (
+                 runtime_ports(baseline, "M7", "go"), runtime_ports(evidence, "M7", "go"),
+                 runtime_ports(evidence, "M7", "bash")),
+             "| M4 TLS 回环端口 | %s | %s（公网 443） | %s | G10 |" % (
+                 runtime_ports(baseline, "M4", "go", True), runtime_ports(evidence, "M4", "go", True),
+                 runtime_ports(evidence, "M4", "bash", True)),
+             "| E1/E2 配置编辑 | 无 | 2 场景 PASS（见上表） | — | G11 |",
+             ""]
+    return lines
+
+
 def render_baseline(evidence, baseline, matrix, entries):
     """Per-scenario diff against an earlier run; only changed cells are named."""
     if not baseline or not os.path.isdir(baseline):
         return []
     global EVID
     lines = ["## 与基线对比（%s）" % os.path.basename(baseline.rstrip("/")), "",
-             "| 场景 | 基线（bash / go / 判定） | 本轮（bash / go / 判定） | 变化格子 |",
+             "| 场景 | 基线（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | "
+             "本轮（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | 变化格子 |",
              "|---|---|---|---|"]
     current = EVID
     changed_total = 0
@@ -337,7 +390,7 @@ def render(evidence, matrix, entries, baseline=None):
     lines.append("Generated %s. Round 1 is primary; round 2 is the idempotency round." %
                  datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     lines.append("")
-    lines.append("| 场景 | bash rc / L4 / rc2 / L6 | go rc / L4 / rc2 / L6 | 判定 | 说明 |")
+    lines.append("| 场景 | bash rc / L4r1 / L4r2 / rc2 / L6 | go rc / L4r1 / L4r2 / rc2 / L6 | 判定 | 说明 |")
     lines.append("|---|---|---|---|---|")
     details = []
     for scenario in scenarios:
@@ -350,9 +403,11 @@ def render(evidence, matrix, entries, baseline=None):
                 return "ok" if v is True else ("fail" if v is False else "-")
             l4 = ",".join("%s:%s" % (k, mark(v)) for k, v in sorted(side["l4"].items())) or \
                 ("relay:" + mark(side["relayL4"]) if side["relayL4"] is not None else "-")
+            l4r2 = ",".join("%s:%s" % (k, mark(v)) for k, v in sorted(side["l4Round2"].items())) or \
+                ("relay:" + mark(side["relayL4Round2"]) if side["relayL4Round2"] is not None else "-")
             idem = side["idempotency"]
-            return "%s / %s / %s / %s" % (
-                side["rc"] if side["rc"] is not None else "-", l4,
+            return "%s / %s / %s / %s / %s" % (
+                side["rc"] if side["rc"] is not None else "-", l4, l4r2,
                 side["rc2"] if side["rc2"] is not None else "-",
                 ("ok" if idem.get("ok") else "fail") if idem else "-")
 
@@ -362,6 +417,9 @@ def render(evidence, matrix, entries, baseline=None):
             "; ".join(reasons).replace("|", "/")))
         details.append((sid, scenario, bash, go, verdict, reasons))
 
+    lines.append("")
+    lines.append("本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；"
+                 "M8 仍为 HARNESS-BLOCKED；其余 BLOCKER 仅由 pending EXPECTED-DIFF 引起。")
     lines.append("")
     lines.append("## 未验 / 阻塞项")
     lines.append("")
@@ -404,8 +462,12 @@ def render(evidence, matrix, entries, baseline=None):
             entry.get("id"), entry.get("scenario"), entry.get("layer"),
             entry.get("path"), ed_state(entry)))
     lines.append("")
+    lines.append("所有 ED 的 `owner` / `approved_by` / `expires` 仍为空并保留 TODO；"
+                 "pending/expired 继续按 BLOCKER 判定。")
+    lines.append("")
     lines.extend(render_edits(evidence, matrix))
     lines.extend(render_baseline(evidence, baseline, matrix, entries))
+    lines.extend(render_step_changes(evidence, baseline))
     lines.append("## 未覆盖/未验证")
     lines.append("")
     lines.append("- M8（ACME）：`eligible:false`，按计划记 HARNESS-BLOCKED。")

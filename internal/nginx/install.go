@@ -61,6 +61,10 @@ type InstallSpec struct {
 	Root      string
 	Artifact  Artifact
 	Stream    bool
+	// RelayOnly installs the stream front for a relay node. Relay nodes have no
+	// Xray inbounds, so the node fragments (00-xray.conf / 03-isolate.conf) are
+	// neither created nor included; only relay-stream.conf is.
+	RelayOnly bool
 	LocalIP   string
 	NoService bool
 }
@@ -114,6 +118,9 @@ type ConfigOptions struct {
 	// Stream includes MainConf at the top level instead of the *.conf glob
 	// inside the http block. Reality front modes render a stream{} block.
 	Stream bool
+	// RelayOnly leaves the node fragments out of the stream main config. The
+	// relay fragment is included separately by EnsureRelayInclude.
+	RelayOnly bool
 }
 
 var (
@@ -322,10 +329,11 @@ func Install(ctx context.Context, spec InstallSpec) (InstallReport, error) {
 	if err := writeAtomic(filepath.Join(confDir, "nginx.default"), rawMain, 0o644); err != nil {
 		return fail(err)
 	}
-	if spec.Stream {
+	if spec.Stream && !spec.RelayOnly {
 		// Bash touches the include targets so nginx -t passes before the
 		// fragments are written by the Xray step. 03-isolate.conf is included
-		// from the http block, so it needs a placeholder too.
+		// from the http block, so it needs a placeholder too. Relay nodes have
+		// no Xray fragments, so they must not create these files (bash parity).
 		for _, name := range []string{MainConf, "03-isolate.conf"} {
 			placeholder := filepath.Join(confDir, name)
 			if _, statErr := os.Lstat(placeholder); os.IsNotExist(statErr) {
@@ -340,7 +348,7 @@ func Install(ctx context.Context, spec InstallSpec) (InstallReport, error) {
 			return fail(err)
 		}
 	}
-	opts := ConfigOptions{User: WorkerUser, Group: WorkerGroup, LocalIP: spec.LocalIP, Stream: spec.Stream}
+	opts := ConfigOptions{User: WorkerUser, Group: WorkerGroup, LocalIP: spec.LocalIP, Stream: spec.Stream, RelayOnly: spec.RelayOnly}
 	rewritten, warnings := RewriteMainConfigWithWarnings(string(rawMain), opts)
 	rep.Warnings = append(rep.Warnings, warnings...)
 	if err := writeAtomic(filepath.Join(installDir, "conf", "nginx.conf"), []byte(rewritten), 0o644); err != nil {
@@ -616,20 +624,24 @@ func RewriteMainConfigWithWarnings(conf string, opts ConfigOptions) (string, []s
 	}
 
 	if opts.Stream {
-		out = append(out, "include /etc/idleleo/conf/nginx/"+MainConf+";")
-		// The isolate site is an http{} server block, so it cannot be reached
-		// through the stream include. Bash inserts this include explicitly.
-		if !containsLine(out, "include /etc/idleleo/conf/nginx/03-isolate.conf;") {
-			inserted := false
-			for i, line := range out {
-				if httpOpen.MatchString(line) {
-					out = append(out[:i+1], append([]string{"    include /etc/idleleo/conf/nginx/03-isolate.conf;"}, out[i+1:]...)...)
-					inserted = true
-					break
+		// Stream mode never uses the http *.conf glob: a relay fragment defines
+		// a top-level stream{} block and would be rejected inside http{}.
+		if !opts.RelayOnly {
+			out = append(out, "include /etc/idleleo/conf/nginx/"+MainConf+";")
+			// The isolate site is an http{} server block, so it cannot be reached
+			// through the stream include. Bash inserts this include explicitly.
+			if !containsLine(out, "include /etc/idleleo/conf/nginx/03-isolate.conf;") {
+				inserted := false
+				for i, line := range out {
+					if httpOpen.MatchString(line) {
+						out = append(out[:i+1], append([]string{"    include /etc/idleleo/conf/nginx/03-isolate.conf;"}, out[i+1:]...)...)
+						inserted = true
+						break
+					}
 				}
-			}
-			if !inserted {
-				warnings = append(warnings, "nginx main config has no http { block; 03-isolate.conf not included")
+				if !inserted {
+					warnings = append(warnings, "nginx main config has no http { block; 03-isolate.conf not included")
+				}
 			}
 		}
 	} else {
@@ -1077,7 +1089,7 @@ func repairManagedState(ctx context.Context, paths host.Paths, installDir string
 	if err != nil {
 		return false, err
 	}
-	opts := ConfigOptions{User: WorkerUser, Group: WorkerGroup, LocalIP: spec.LocalIP, Stream: spec.Stream}
+	opts := ConfigOptions{User: WorkerUser, Group: WorkerGroup, LocalIP: spec.LocalIP, Stream: spec.Stream, RelayOnly: spec.RelayOnly}
 	rewritten, warnings := RewriteMainConfigWithWarnings(string(rawMain), opts)
 	if rewritten != string(rawMain) {
 		// Validate the repaired file before it replaces the live config.

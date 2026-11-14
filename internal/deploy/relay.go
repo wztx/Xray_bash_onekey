@@ -99,7 +99,7 @@ func InstallRelay(ctx context.Context, spec RelayInstallSpec) (RelayReport, erro
 		}
 	}
 	installed, err := installManagedNginx(ctx, nginx.InstallSpec{
-		Root: paths.Root, Artifact: artifact, Stream: true,
+		Root: paths.Root, Artifact: artifact, Stream: true, RelayOnly: true,
 		LocalIP: localIP, NoService: spec.NoService,
 	})
 	if err != nil {

@@ -40,6 +40,21 @@ func TestInstallRelayWritesConfAndInclude(t *testing.T) {
 	if !strings.Contains(mainBody, marker) {
 		t.Fatalf("main config missing relay marker:\n%s", mainBody)
 	}
+	// Relay nodes have no Xray inbound fragments; bash writes neither the files
+	// nor the includes, so a relay install must not leave dead node includes.
+	for _, dead := range []string{"00-xray.conf", "03-isolate.conf"} {
+		if strings.Contains(mainBody, "include /etc/idleleo/conf/nginx/"+dead+";") {
+			t.Fatalf("relay main config still includes %s:\n%s", dead, mainBody)
+		}
+		if _, err := os.Stat(filepath.Join(root, "etc/idleleo/conf/nginx", dead)); !os.IsNotExist(err) {
+			t.Fatalf("relay install created node fragment %s (stat err %v)", dead, err)
+		}
+	}
+	// The http glob would pull relay-stream.conf into http{} and nginx rejects
+	// the stream directive there.
+	if strings.Contains(mainBody, "include /etc/idleleo/conf/nginx/*.conf;") {
+		t.Fatalf("relay main config uses the http *.conf glob:\n%s", mainBody)
+	}
 
 	meta := readFile(t, filepath.Join(root, "etc/idleleo/v1/metadata.json"))
 	if !strings.Contains(meta, "relay") {

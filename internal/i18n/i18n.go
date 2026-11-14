@@ -42,6 +42,8 @@ var zh = map[string]string{
   xray generate        生成运行配置（reality/tls/ws/grpc/xhttp、relay、balance）
   xray share           为现有配置输出分享链接与 Clash 配置
   xray relay           生成指向后端的 nginx 中转配置
+  xray config edit     就地修改端口/传输/路径；TLS 站可改 --domain/--cert/--cert-key
+                       默认对新域名做本地 TLS 握手，--no-probe 关闭；不自动重签
   xray user list|add|remove
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
   xray logs clean|rotate enable|disable
@@ -126,6 +128,9 @@ Commands:
   xray generate        generate a runtime config (reality/tls/ws/grpc/xhttp, relay, balance)
   xray share           print share URI and Clash YAML for an existing config
   xray relay           generate the nginx relay conf for one backend
+  xray config edit     patch ports/transport/paths in place; TLS sites accept
+                       --domain/--cert/--cert-key, probe the new SNI locally unless
+                       --no-probe is given, and never re-issue a certificate
   xray user list|add|remove
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
   xray logs clean|rotate enable|disable

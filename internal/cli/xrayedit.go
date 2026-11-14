@@ -50,6 +50,7 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 		ConfigPath:           flagValue(args, "--path"),
 		Request:              req,
 		NoRestart:            hasFlag(args, "--no-restart"),
+		NoProbe:              hasFlag(args, "--no-probe"),
 		DryRun:               true,
 		AllowContainerWrites: hasFlag(args, "--container"),
 	}
@@ -184,6 +185,9 @@ func editRequestFromFlags(args []string) (xraycfg.EditRequest, error) {
 		GRPCServiceName:  flagValue(args, "--grpc-service-name"),
 		Target:           flagValue(args, "--target"),
 		UUID:             flagValue(args, "--uuid"),
+		Domain:           flagValue(args, "--domain"),
+		CertFile:         flagValue(args, "--cert"),
+		KeyFile:          flagValue(args, "--cert-key"),
 		AllowNonLoopback: hasFlag(args, "--allow-non-loopback"),
 	}
 	if raw := flagValue(args, "--server-names"); raw != "" {
@@ -215,8 +219,9 @@ func editRequestFromFlags(args []string) (xraycfg.EditRequest, error) {
 	}
 	if req.Listen == "" && req.Transport == "" && req.WSPath == "" && req.XHTTPPath == "" &&
 		req.GRPCServiceName == "" && req.Target == "" && len(req.ServerNames) == 0 && req.UUID == "" &&
+		req.Domain == "" && req.CertFile == "" && req.KeyFile == "" &&
 		req.Port == 0 && req.PublicPort == 0 && req.WSPort == 0 && req.GRPCPort == 0 && req.XHTTPPort == 0 {
-		return xraycfg.EditRequest{}, fmt.Errorf("nothing to edit: pass at least one of --listen, --port, --public-port, --transport, --ws-path, --xhttp-path, --grpc-service-name, --target, --server-names, --uuid")
+		return xraycfg.EditRequest{}, fmt.Errorf("nothing to edit: pass at least one of --listen, --port, --public-port, --transport, --ws-path, --xhttp-path, --grpc-service-name, --target, --server-names, --uuid, --domain, --cert, --cert-key")
 	}
 	return req, nil
 }
@@ -237,11 +242,35 @@ func printEditPreview(opts Options, preview deploy.EditReport) {
 	for _, d := range preview.Diff {
 		fmt.Fprintf(opts.Out, "diff=%s\n", d)
 	}
+	printTLSReport(opts, preview)
 	fmt.Fprintf(opts.Out, "config: %s sha256=%s -> %s\n", preview.ConfigPath, preview.OldSHA256, preview.NewSHA256)
 	if preview.OriginProbe != "" {
 		fmt.Fprintf(opts.Out, "origin: %s ok\n", preview.OriginProbe)
 	}
 	fmt.Fprintln(opts.Out, "dry-run: nothing was written")
+}
+
+// printTLSReport surfaces the front-owned TLS values and the handshake
+// verdict. "skipped" is never printed as a pass.
+func printTLSReport(opts Options, r deploy.EditReport) {
+	if r.Domain == "" && r.CertFile == "" {
+		return
+	}
+	fmt.Fprintf(opts.Out, "tls: domain=%s cert=%s key=%s\n", r.Domain, r.CertFile, r.CertKeyFile)
+	if r.CertNotAfter != "" {
+		fmt.Fprintf(opts.Out, "cert: notAfter=%s sans=%s\n", r.CertNotAfter, strings.Join(r.CertSANs, ","))
+	}
+	if r.TLSProbe != "" {
+		if r.TLSServerName == "" {
+			fmt.Fprintf(opts.Out, "tls-probe: %s\n", r.TLSProbe)
+		} else {
+			fmt.Fprintf(opts.Out, "tls-probe: %s sni=%s version=%s systemTrusted=%t\n",
+				r.TLSProbe, r.TLSServerName, r.TLSVersion, r.TLSTrusted)
+		}
+	}
+	if r.ScheduleUpdated {
+		fmt.Fprintf(opts.Out, "schedule: cert-renew target updated (%s)\n", r.SchedulePath)
+	}
 }
 
 func printEditReport(opts Options, report deploy.EditReport) {
@@ -250,6 +279,7 @@ func printEditReport(opts Options, report deploy.EditReport) {
 	for _, d := range report.Diff {
 		fmt.Fprintf(opts.Out, "diff=%s\n", d)
 	}
+	printTLSReport(opts, report)
 	fmt.Fprintf(opts.Out, "config: %s sha256=%s\n", report.ConfigPath, report.NewSHA256)
 	if report.OriginProbe != "" {
 		fmt.Fprintf(opts.Out, "origin: %s ok\n", report.OriginProbe)

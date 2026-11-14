@@ -94,6 +94,35 @@ type Spec struct {
 	// UnknownSNIPolicy selects the Bash SNI guard branch: isolate (default),
 	// reject. decoy requires pre-existing site artifacts and is refused here.
 	UnknownSNIPolicy string
+	// WSPort/GRPCPort/XHTTPPort pin the automatically added transport inbound
+	// ports (Bash asks the same question as "custom ws/gRPC/xHTTP port").
+	// Zero selects a deterministic free port from the Bash pool.
+	WSPort    int
+	GRPCPort  int
+	XHTTPPort int
+}
+
+// extraPort returns the operator-pinned port for an added transport, or zero
+// when the generator should pick one.
+func (s Spec) extraPort(transport string) int {
+	switch transport {
+	case TransportWS:
+		return s.WSPort
+	case TransportGRPC:
+		return s.GRPCPort
+	case TransportXHTTP:
+		return s.XHTTPPort
+	default:
+		return 0
+	}
+}
+
+// extraListenFor mirrors the Bash listen address for added transports.
+func extraListenFor(spec Spec) string {
+	if spec.Mode == ModeReality || spec.Mode == ModeRealityNginx {
+		return spec.Listen
+	}
+	return "127.0.0.1"
 }
 
 // UserView is one VLESS client in the generated/edited inbound.
@@ -351,7 +380,17 @@ func Generate(spec Spec) (Generated, error) {
 		}
 	}
 
-	defs := buildInboundDefs(spec, g.Transport, inboundPort)
+	// Bash keeps added inbounds on loopback for none/TLS but exposes them on
+	// the primary listen address for Reality (reality_add_more runs after the
+	// 0.0.0.0 rewrite). Match that instead of forcing loopback everywhere.
+	extraListen := extraListenFor(spec)
+	picker := newPortPicker(extraListen, spec.Mode == ModeReality || spec.Mode == ModeRealityNginx,
+		inboundPort, spec.PublicPort)
+	defs, err := buildInboundDefs(spec, g.Transport, inboundPort, picker)
+	if err != nil {
+		return Generated{}, err
+	}
+	g.Warnings = append(g.Warnings, picker.warnings...)
 	config := buildConfig(spec, defs, serverName, realityTarget, privateKey, shortID)
 
 	g.Port, g.PublicPort, g.Listen = inboundPort, spec.PublicPort, spec.Listen
@@ -396,18 +435,95 @@ func Generate(spec Spec) (Generated, error) {
 
 const defaultXHTTPPath = "/xhttp/"
 
-// portOffset returns a distinct port near base, wrapping inside the valid
-// range. Multi-entry installs use consecutive ports instead of Bash's random
-// selection so the artifact stays reproducible.
-func portOffset(base, offset int) int {
-	p := base + offset
-	for p > 65535 {
-		p -= 65535
+// Bash reality_add_more draws the extra inbound ports at random from these
+// pools. Go scans the same pools in ascending order instead, so the result is
+// reproducible while still avoiding reserved and occupied ports.
+const (
+	extraPortMin = 10000
+	extraPortMax = 10999
+	xhttpPortMin = 11000
+	xhttpPortMax = 11999
+)
+
+// canBindTCP reports whether the address is free right now. It is a variable so
+// tests can simulate a busy port without touching the machine.
+var canBindTCP = func(addr string, port int) bool {
+	ln, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+	if err != nil {
+		return false
 	}
-	if p < 1 {
-		p = 1
+	_ = ln.Close()
+	return true
+}
+
+// portPicker hands out the added transport ports. Explicit values are
+// validated and probed; automatic values scan the Bash pool and skip ports that
+// are reserved, already assigned or in use.
+type portPicker struct {
+	used     map[int]bool
+	listen   string
+	reserved bool
+	warnings []string
+}
+
+func newPortPicker(listen string, reserved bool, used ...int) *portPicker {
+	p := &portPicker{used: map[int]bool{}, listen: listen, reserved: reserved}
+	for _, port := range used {
+		if port > 0 {
+			p.used[port] = true
+		}
 	}
 	return p
+}
+
+// probeAddr keeps net.Listen on a literal address; non-IP listen values are
+// probed on the wildcard address instead of being mistaken for a busy port.
+func probeAddr(listen string) string {
+	if listen == "" {
+		return "0.0.0.0"
+	}
+	if ip := net.ParseIP(strings.Trim(listen, "[]")); ip != nil {
+		return ip.String()
+	}
+	return "0.0.0.0"
+}
+
+func (p *portPicker) pick(transport string, explicit int) (int, error) {
+	lo, hi := extraPortMin, extraPortMax
+	if transport == TransportXHTTP {
+		lo, hi = xhttpPortMin, xhttpPortMax
+	}
+	if explicit != 0 {
+		if explicit < 1 || explicit > 65535 {
+			return 0, fmt.Errorf("%s port must be between 1 and 65535", transport)
+		}
+		if p.reserved && isRealityReservedPort(explicit) {
+			return 0, fmt.Errorf("%s port %d is reserved for Reality internals (9403, 9404, 9443, 9444)", transport, explicit)
+		}
+		if p.used[explicit] {
+			return 0, fmt.Errorf("%s port %d is already used by another inbound", transport, explicit)
+		}
+		if !canBindTCP(probeAddr(p.listen), explicit) {
+			return 0, fmt.Errorf("%s port %d is already in use on %s", transport, explicit, p.listen)
+		}
+		p.used[explicit] = true
+		return explicit, nil
+	}
+	for port := lo; port <= hi; port++ {
+		if p.reserved && isRealityReservedPort(port) {
+			continue
+		}
+		if p.used[port] {
+			continue
+		}
+		if !canBindTCP(probeAddr(p.listen), port) {
+			p.warnings = append(p.warnings, fmt.Sprintf("%s port %d is in use on %s; trying the next candidate", transport, port, p.listen))
+			continue
+		}
+		p.used[port] = true
+		return port, nil
+	}
+	return 0, fmt.Errorf("no free %s port available in %d-%d", transport, lo, hi)
 }
 
 // defaultRealityExtraEmail mirrors the per-transport emails Bash assigns to
@@ -440,28 +556,33 @@ func inboundTag(transport string) string {
 
 // buildInboundDefs returns the inbounds for the requested transport. The
 // primary inbound always uses inboundPort so callers can address it by index 0.
-func buildInboundDefs(spec Spec, transport string, inboundPort int) []inboundDef {
+// Added transports take their ports from picker.
+func buildInboundDefs(spec Spec, transport string, inboundPort int, picker *portPicker) ([]inboundDef, error) {
 	realityMode := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx
 	if transport != TransportMulti {
 		if transport == TransportRaw {
 			return []inboundDef{{tag: inboundTag(transport), transport: TransportRaw, port: inboundPort,
-				listen: spec.Listen, email: spec.Email, flow: spec.Flow}}
+				listen: spec.Listen, email: spec.Email, flow: spec.Flow}}, nil
 		}
 		if realityMode {
 			// Bash reality_add_more: the Reality raw inbound remains the primary
-			// entry and the selected transport is appended on the next port.
+			// entry and the selected transport is appended on its own port.
+			extraPort, err := picker.pick(transport, spec.extraPort(transport))
+			if err != nil {
+				return nil, err
+			}
 			return []inboundDef{
 				{tag: inboundTag(TransportRaw), transport: TransportRaw, port: inboundPort,
 					listen: spec.Listen, email: spec.Email, flow: spec.Flow},
-				{tag: inboundTag(transport), transport: transport, port: portOffset(spec.Port, 1),
+				{tag: inboundTag(transport), transport: transport, port: extraPort,
 					listen: spec.Listen, email: defaultRealityExtraEmail(transport),
 					path: spec.Path, serviceName: spec.ServiceName},
-			}
+			}, nil
 		}
 		return []inboundDef{{
 			tag: inboundTag(transport), transport: transport, port: inboundPort, listen: spec.Listen,
 			email: spec.Email, path: spec.Path, serviceName: spec.ServiceName,
-		}}
+		}}, nil
 	}
 	reality := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx
 	defs := make([]inboundDef, 0, 4)
@@ -475,24 +596,30 @@ func buildInboundDefs(spec Spec, transport string, inboundPort int) []inboundDef
 	// Bash keeps added inbounds on loopback for none/TLS but exposes them on
 	// the primary listen address for Reality (reality_add_more runs after the
 	// 0.0.0.0 rewrite). Match that instead of forcing loopback everywhere.
-	extraListen := "127.0.0.1"
+	extraListen := extraListenFor(spec)
 	if reality {
-		extraListen = spec.Listen
-	}
-	offset := 1
-	if reality {
+		wsPort, err := picker.pick(TransportWS, spec.WSPort)
+		if err != nil {
+			return nil, err
+		}
 		defs = append(defs, inboundDef{tag: inboundTag(TransportWS), transport: TransportWS,
-			port: portOffset(spec.Port, offset), listen: extraListen, email: "ws@hey.run", path: spec.Path})
-		offset++
+			port: wsPort, listen: extraListen, email: "ws@hey.run", path: spec.Path})
+	}
+	grpcPort, err := picker.pick(TransportGRPC, spec.GRPCPort)
+	if err != nil {
+		return nil, err
 	}
 	defs = append(defs, inboundDef{tag: inboundTag(TransportGRPC), transport: TransportGRPC,
-		port: portOffset(spec.Port, offset), listen: extraListen, email: "me@hey.run",
+		port: grpcPort, listen: extraListen, email: "me@hey.run",
 		serviceName: spec.ServiceName})
-	offset++
+	xhttpPort, err := picker.pick(TransportXHTTP, spec.XHTTPPort)
+	if err != nil {
+		return nil, err
+	}
 	defs = append(defs, inboundDef{tag: inboundTag(TransportXHTTP), transport: TransportXHTTP,
-		port: portOffset(spec.Port, offset), listen: extraListen, email: "xhttp@hey.run",
+		port: xhttpPort, listen: extraListen, email: "xhttp@hey.run",
 		path: defaultXHTTPPath})
-	return defs
+	return defs, nil
 }
 
 func buildConfig(spec Spec, defs []inboundDef, serverName, target, privateKey, shortID string) []byte {

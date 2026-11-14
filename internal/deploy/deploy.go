@@ -37,11 +37,16 @@ const (
 
 // InstallSpec is one fresh install request.
 type InstallSpec struct {
-	Root             string
-	SourceBinary     string
-	Mode             string
-	Transport        string
-	Port             int
+	Root         string
+	SourceBinary string
+	Mode         string
+	Transport    string
+	Port         int
+	// WSPort/GRPCPort/XHTTPPort pin the added transport inbound ports. Zero
+	// lets the generator pick a free port from the Bash pool.
+	WSPort           int
+	GRPCPort         int
+	XHTTPPort        int
 	Domain           string
 	Target           string
 	Path             string
@@ -203,6 +208,7 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 	{
 		g, genErr := xraycfg.Generate(xraycfg.Spec{
 			Mode: spec.Mode, Transport: spec.Transport, Port: spec.Port,
+			WSPort: spec.WSPort, GRPCPort: spec.GRPCPort, XHTTPPort: spec.XHTTPPort,
 			Domain: spec.Domain, Target: spec.Target, Path: spec.Path,
 			ServiceName: spec.ServiceName, UUID: spec.UUID, Email: spec.Email,
 			Flow: spec.Flow, PrivateKey: spec.PrivateKey, ShortID: spec.ShortID,
@@ -217,6 +223,7 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		if len(configBytes) == 0 {
 			configBytes = g.Config
 		}
+		rep.Warnings = append(rep.Warnings, g.Warnings...)
 		generated = &g
 		if rep.Preserved {
 			// Classify the adopted runtime rather than the freshly generated one.

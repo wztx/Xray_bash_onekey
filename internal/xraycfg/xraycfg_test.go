@@ -598,13 +598,115 @@ func TestRealitySingleTransportKeepsRealityPrimary(t *testing.T) {
 	if stream["network"] != TransportWS {
 		t.Fatalf("added inbound network = %v, want ws", stream["network"])
 	}
-	if port := added["port"].(float64); port != 444 {
-		t.Fatalf("added inbound port = %v, want 444", port)
+	if port := added["port"].(float64); port < extraPortMin || port > extraPortMax {
+		t.Fatalf("added inbound port = %v, want a port from the Bash ws pool %d-%d", port, extraPortMin, extraPortMax)
 	}
 	if g.Transport != TransportWS {
 		t.Fatalf("generated transport = %q, want ws", g.Transport)
 	}
 	if !strings.Contains(g.ShareURI, "security=reality") {
 		t.Fatalf("share URI lost reality security: %s", g.ShareURI)
+	}
+}
+
+func stubCanBind(t *testing.T, fn func(addr string, port int) bool) {
+	t.Helper()
+	old := canBindTCP
+	canBindTCP = fn
+	t.Cleanup(func() { canBindTCP = old })
+}
+
+func portsByTransport(t *testing.T, g Generated) map[string]int {
+	t.Helper()
+	out := map[string]int{}
+	for _, in := range multiInbounds(t, g) {
+		network := in["streamSettings"].(map[string]any)["network"].(string)
+		out[network] = int(in["port"].(float64))
+	}
+	return out
+}
+
+func TestExtraPortsUseBashPools(t *testing.T) {
+	stubCanBind(t, func(string, int) bool { return true })
+	g, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportMulti})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := portsByTransport(t, g)
+	for _, transport := range []string{TransportWS, TransportGRPC} {
+		if ports[transport] < extraPortMin || ports[transport] > extraPortMax {
+			t.Fatalf("%s port %d outside the Bash pool %d-%d", transport, ports[transport], extraPortMin, extraPortMax)
+		}
+	}
+	if ports[TransportXHTTP] < xhttpPortMin || ports[TransportXHTTP] > xhttpPortMax {
+		t.Fatalf("xhttp port %d outside the Bash pool %d-%d", ports[TransportXHTTP], xhttpPortMin, xhttpPortMax)
+	}
+	if ports[TransportWS] == ports[TransportGRPC] {
+		t.Fatalf("ws and grpc must not share a port: %v", ports)
+	}
+}
+
+func TestExtraPortsSkipBusyCandidates(t *testing.T) {
+	stubCanBind(t, func(_ string, port int) bool { return port > 10002 })
+	g, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := portsByTransport(t, g)
+	if ports[TransportWS] != 10003 {
+		t.Fatalf("ws port = %d, want 10003 after skipping 10000-10002", ports[TransportWS])
+	}
+	found := false
+	for _, w := range g.Warnings {
+		if strings.Contains(w, "10000") && strings.Contains(w, "in use") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("busy candidates must be reported, warnings = %v", g.Warnings)
+	}
+}
+
+func TestExtraPortsHonourExplicitOverrides(t *testing.T) {
+	stubCanBind(t, func(string, int) bool { return true })
+	g, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportMulti,
+		WSPort: 12345, GRPCPort: 12346, XHTTPPort: 12347})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := portsByTransport(t, g)
+	if ports[TransportWS] != 12345 || ports[TransportGRPC] != 12346 || ports[TransportXHTTP] != 12347 {
+		t.Fatalf("explicit ports not honoured: %v", ports)
+	}
+}
+
+func TestExtraPortsRejectBusyDuplicateAndReservedExplicit(t *testing.T) {
+	stubCanBind(t, func(_ string, port int) bool { return port != 12345 })
+	if _, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS, WSPort: 12345}); err == nil ||
+		!strings.Contains(err.Error(), "in use") {
+		t.Fatalf("busy explicit port must fail with an in-use error, got %v", err)
+	}
+	if _, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS, WSPort: 443}); err == nil ||
+		!strings.Contains(err.Error(), "already used") {
+		t.Fatalf("duplicate explicit port must fail, got %v", err)
+	}
+	if _, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS, WSPort: 9443}); err == nil ||
+		!strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("reserved explicit port must fail, got %v", err)
+	}
+	if _, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS, WSPort: 70000}); err == nil ||
+		!strings.Contains(err.Error(), "between 1 and 65535") {
+		t.Fatalf("out-of-range explicit port must fail, got %v", err)
+	}
+}
+
+func TestExtraPortsDoNotWrapAt65535(t *testing.T) {
+	stubCanBind(t, func(string, int) bool { return true })
+	g, err := Generate(Spec{Mode: ModeReality, Domain: "example.com", Transport: TransportWS, Port: 65535})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port := portsByTransport(t, g)[TransportWS]; port < extraPortMin || port > extraPortMax {
+		t.Fatalf("ws port = %d, want a pool port instead of wrapping to 1", port)
 	}
 }

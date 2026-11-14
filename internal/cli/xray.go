@@ -416,6 +416,9 @@ func xrayInstall(ctx context.Context, opts Options, cfg config, args []string) i
 		Mode:                 spec.Mode,
 		Transport:            spec.Transport,
 		Port:                 spec.Port,
+		WSPort:               spec.WSPort,
+		GRPCPort:             spec.GRPCPort,
+		XHTTPPort:            spec.XHTTPPort,
 		Domain:               spec.Domain,
 		Target:               spec.Target,
 		Path:                 spec.Path,
@@ -589,6 +592,22 @@ func specFromFlags(args []string) (xraycfg.Spec, error) {
 			return xraycfg.Spec{}, fmt.Errorf("--public-port must be an integer")
 		}
 		spec.PublicPort = v
+	}
+	for _, port := range []struct {
+		flag string
+		dst  *int
+	}{
+		{"--ws-port", &spec.WSPort},
+		{"--grpc-port", &spec.GRPCPort},
+		{"--xhttp-port", &spec.XHTTPPort},
+	} {
+		if raw := flagValue(args, port.flag); raw != "" {
+			v, err := strconv.Atoi(raw)
+			if err != nil {
+				return xraycfg.Spec{}, fmt.Errorf("%s must be an integer", port.flag)
+			}
+			*port.dst = v
+		}
 	}
 	// Bash treats "Reality with an Nginx front" as its own install branch, while
 	// the Go CLI names it --mode reality-nginx. Accept the Bash-shaped

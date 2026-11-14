@@ -58,9 +58,9 @@ type Metadata struct {
 
 // InstallSpec is one managed Nginx installation request.
 type InstallSpec struct {
-	Root      string
-	Artifact  Artifact
-	Stream    bool
+	Root     string
+	Artifact Artifact
+	Stream   bool
 	// RelayOnly installs the stream front for a relay node. Relay nodes have no
 	// Xray inbounds, so the node fragments (00-xray.conf / 03-isolate.conf) are
 	// neither created nor included; only relay-stream.conf is.

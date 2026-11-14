@@ -214,6 +214,28 @@
     {"id": "S8", "script": "tcp.sh", "trigger": "6>1", "go": ["tcp plan/apply"], "states": ["normal", "repeat", "failure"], "layers": ["L0", "L3"], "mirrorDeps": []},
     {"id": "S9", "script": "superspeed.sh", "trigger": "6>6", "go": ["speedtest"], "states": ["normal", "repeat", "failure"], "layers": ["L0", "L5"], "mirrorDeps": ["speedtest-endpoint"]}
   ],
+  "edits": [
+    {
+      "id": "E1",
+      "name": "config-edit-before-after",
+      "base": "M1",
+      "method": "M1 安装 -> xray share/config 取证 -> xray config edit --uuid --yes --container -> L4 + 改后取证",
+      "go": {"argv": ["idleleo", "xray", "config", "edit", "--uuid", "99999999-8888-7777-6666-555555555555", "--yes", "--container", "--json"]},
+      "checks": ["editRcZero", "configChanged", "uuidApplied", "shareUriUpdated", "serviceActive", "backupExists"],
+      "l4": "reality",
+      "notes": "Go 独有能力，bash 侧无 UUID 非交互入口；判定只看 Go 改前/改后与 L4。"
+    },
+    {
+      "id": "E2",
+      "name": "config-edit-restart-rollback",
+      "base": "M1",
+      "method": "注入一次性 Xray 重启失败（systemd drop-in）-> config edit --port 8443 -> 期望 rc!=0、配置 SHA 还原、服务 active、L4 仍通",
+      "go": {"argv": ["idleleo", "xray", "config", "edit", "--port", "8443", "--yes", "--container", "--json"]},
+      "checks": ["editRcNonZero", "rollbackReported", "configRestored", "serviceActive"],
+      "l4": "reality",
+      "notes": "drop-in 只在首次 ExecStartPre 失败，回滚重启可成功，用于验证真回滚而非永久坏服务。"
+    }
+  ],
   "upgrade": {
     "official": "R1",
     "r1": {

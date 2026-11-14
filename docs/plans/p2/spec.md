@@ -26,6 +26,10 @@ HARNESS-ERROR 只允许按规则重跑 1 次，环境问题不得判过。
 | G5 | M2 `--mode reality-nginx` vs bash `--mode reality --nginx-bin` | CLI 形态 | 可改（别名） | 加兼容别名，不改变落盘语义 |
 | G6 | M9 监听 / M5–M7 缺 `--binary` | 测试 argv | 改测试 | 已在 `matrix.json` 修正 |
 | G7 | 安全闸（loopback 保护、覆盖保护） | 安全 | 需拍板 | M9 的 `--allow-non-loopback` 保留显式确认；G4 只改默认保留策略，不取消显式覆盖开关 |
+| G8 | M10 relay 角色多写 `00-xray.conf`/`03-isolate.conf` 占位，stream 主配置凭空 include 两个不存在的文件 | 安装落地 | 可改 | relay 不创建占位；`RewriteMainConfig` 的 Stream 分支只在节点模式 include；P2 M10 文件集合与 bash 一致 |
+| G9 | 附加传输端口用 `base+1` 硬偏移，未跳过第三方占用，未排除 bash 保留端口 | 生成逻辑 | 可改 | 确定性候选（ws/gRPC 10000–10999、xHTTP 11000–11999）+ 生成前 bind 探测 + 保留端口排除 + `--ws-port/--grpc-port/--xhttp-port` 显式覆盖；65535 不回绕 |
+| G10 | TLS 模式的回环 inbound 与 Nginx 共用公网端口，任何重启都 EADDRINUSE | 生成逻辑 | 可改 | 回环 inbound 改用传输端口池，Nginx 独占公网端口；与 bash 菜单一致 |
+| G11 | bash 改配置靠菜单，无配置级自检、无 patch 语义、无回滚 | 能力缺口 | 可改（Go 领先） | 新增 `xray config edit`：局部补丁、`xray -test` 前置、备份、重启失败回滚、断线项二次确认 |
 
 ## 3. 决策（按新口径重写）
 
@@ -65,6 +69,37 @@ HARNESS-ERROR 只允许按规则重跑 1 次，环境问题不得判过。
   若 P2 证据显示只有 manifest 收录范围不同（如 bash 收录 `/usr/local/nginx` 二进制树），
   按采集口径对齐，不改安装路径；若确有配置落盘差异，再改 Go。
 
+### D6 M10 relay 文件集合（G8）
+
+- 结论：**可改**。relay 只拥有 `relay-stream.conf`；占位文件是节点模式的产物。
+- 改法：`nginx.InstallSpec.RelayOnly` 控制占位创建；`RewriteMainConfig` 的 Stream 分支
+  在 relay 模式不再 include `00-xray.conf` / `03-isolate.conf`。
+- 验证：M10 bash/go 的 `/etc/idleleo/conf/nginx` 文件集合一致，`nginx -t` 通过，回源与 L6 幂等不回归。
+
+### D7 附加传输端口（G9）
+
+- 结论：**可改**。硬偏移既可能与第三方冲突，也没有 bash 的保留端口语义。
+- 改法：按传输使用 bash 端口池（ws/gRPC 10000–10999，xHTTP 11000–11999），
+  生成前逐个 `bind` 探测，跳过已占用并输出 warning；排除 9403/9404/9443/9444；
+  显式 `--ws-port/--grpc-port/--xhttp-port` 越界/重复/保留/占用直接报错；65535 不回绕到 1。
+- 验证：M3/M7 两侧端口语义一致；第三方占用 10000 时自动避让到 10001 并留下日志。
+
+### D8 TLS 回环端口（G10）
+
+- 结论：**可改**。TLS 模式的 Xray inbound 必须与 Nginx 公网端口错开，否则任何重启都失败。
+- 改法：TLS 模式回环 inbound 从传输端口池取端口，Nginx 独占公网端口；share 链接仍用公网端口。
+- 验证：M4/M7 两侧 rc/L4/幂等均通过；TLS 场景 `systemctl restart xray` 可成功。
+
+### D9 配置编辑（G11）
+
+- 结论：**新增 Go 能力**。正式规格 v1.0 见
+  `docs/plans/p2/interactive-config-editing-discussion.md`（原讨论稿已升级）。
+- 要点：`xray config edit` 为局部补丁（隐含 keep），与 `--rewrite-config` 互斥；
+  候选配置先过 `xray -test`（Nginx 场景加 `nginx -t`）才落盘；
+  备份 `/etc/idleleo/backup/edit-<ts>/`，重启失败自动回滚；断线项强制二次确认，
+  非 TTY 需 `--yes`；提供 `--dry-run` / `--no-restart` / `--json`。
+- 验证：矩阵新增 E1（改前改后）与 E2（重启失败回滚）两格，均需 PASS。
+
 ## 4. 实现范围（精确到文件）
 
 | 文件 | 变更 |
@@ -77,7 +112,12 @@ HARNESS-ERROR 只允许按规则重跑 1 次，环境问题不得判过。
 | `internal/deploy/relay.go` | relay 安装落地（managed Nginx stream + relay-stream.conf + include + 启服务） |
 | `internal/nginx/install.go` | `EnsureRelayInclude`：主配置顶层 include 与用户 stream 冲突保护 |
 | `internal/deploy/deploy_test.go` | 更新/新增默认接管与 relay 断言 |
-| `tests/e2e-diff/matrix.json` | Go argv、已验证状态、能力缺口回收 |
+| `internal/xraycfg/edit.go` | 配置编辑的 spec 还原、patch、diff 白名单（D9） |
+| `internal/xraycfg/edit_test.go` | 编辑语义单测（D9） |
+| `internal/deploy/edit.go` | 自检、备份、快照、重启与回滚、relay 编辑（D9） |
+| `internal/deploy/edit_test.go` | 成功/自检失败零落盘/回滚/dry-run（D9） |
+| `internal/cli/xrayedit.go` | `xray config edit` 参数映射、确认与输出（D9） |
+| `tests/e2e-diff/matrix.json` | Go argv、已验证状态、能力缺口回收；`edits` 段 E1/E2 |
 | `tests/e2e-diff/drivers/*` | 场景应答与轮次（已扩展，按复跑修正） |
 | `tests/e2e-diff/collect/*` | L5/L6 采集（已新增） |
 | `tests/e2e-diff/run_p2_matrix.sh` | 全量复跑（已新增） |

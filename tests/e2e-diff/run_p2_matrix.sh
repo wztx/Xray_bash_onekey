@@ -79,6 +79,29 @@ json_list() {
     python3 -c 'import json,sys; print("\n".join(str(x) for x in json.loads(sys.argv[1])))' "$1"
 }
 
+# edit_get reads one field from matrix.json's `edits` section (E1/E2).
+edit_get() {
+    python3 - "$SUITE/matrix.json" "$1" "$2" <<'PY'
+import json, sys
+matrix = json.load(open(sys.argv[1]))
+entry = next(x for x in matrix['edits'] if x['id'] == sys.argv[2])
+cur = entry
+for part in sys.argv[3].split('.'):
+    if not isinstance(cur, dict):
+        cur = None
+        break
+    cur = cur.get(part)
+if cur is None or cur == "":
+    print("")
+elif isinstance(cur, bool):
+    print("true" if cur else "false")
+elif isinstance(cur, (list, dict)):
+    print(json.dumps(cur, ensure_ascii=False))
+else:
+    print(cur)
+PY
+}
+
 # --- prerequisites ---------------------------------------------------------
 log "run_id=$RUN_ID"
 docker build -q -t "$IMAGE_TAG" -f "$SUITE/image/Dockerfile" "$SUITE/image" >/dev/null || {
@@ -384,6 +407,50 @@ scenario_job() {
     log "[$sid] done"
 }
 
+# --- config edit scenarios (Go only) ---------------------------------------
+run_edit_l4() {
+    local eid=$1 server=$2 out=$3 label=$4 net=$5
+    local client="e2e-$RUN_ID-$eid-go-$label"
+    local secret="$WORK/secret/$eid-$label"
+    mkdir -p "$out/edit"
+    E2E_L4_URL="http://example.com/" E2E_L4_MARKER="Example Domain" \
+        bash "$SUITE/collect/l4.sh" "$server" "$client" "$IMAGE_TAG" "$net" \
+            reality "$DOMAIN" "$WORK/seed/xray" "$secret" "$out/edit/L4-$label" reality \
+            >"$out/edit/L4-$label.log" 2>&1
+}
+
+edit_job() {
+    local eid=$1
+    local net="e2e-$RUN_ID-$eid"
+    local base="$EVID/$eid"
+    local gout="$base/go"
+    mkdir -p "$gout"
+    docker network create "$net" >/dev/null 2>&1 || true
+    log "[$eid] start"
+    local base_sid go_argv_json edit_argv_json
+    base_sid=$(edit_get "$eid" base)
+    go_argv_json=$(matrix_get "$base_sid" go.argv)
+    edit_argv_json=$(edit_get "$eid" go.argv)
+    local gserver="e2e-$RUN_ID-$eid-go"
+    if start_server "$gserver" "$eid" go "$gout" "$net"; then
+        GO_ARGV=()
+        while IFS= read -r line; do GO_ARGV+=("$line"); done < <(json_list "$go_argv_json")
+        run_go_round "$base_sid" "$gserver" "$gout" 1 "" reality "${GO_ARGV[@]}"
+        run_edit_l4 "$eid" "$gserver" "$gout" before "$net"
+        EDIT_ARGV=()
+        while IFS= read -r line; do EDIT_ARGV+=("$line"); done < <(json_list "$edit_argv_json")
+        docker exec -e E2E_OUT=/out -e E2E_SCENARIO="$eid" "$gserver" \
+            bash /src/tests/e2e-diff/drivers/go_edit.sh "${EDIT_ARGV[@]}"
+        run_edit_l4 "$eid" "$gserver" "$gout" after "$net"
+        echo 0 >"$gout/install.rc"
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$gout/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$gserver" >/dev/null 2>&1 || true
+    docker network rm "$net" >/dev/null 2>&1 || true
+    log "[$eid] done"
+}
+
 # --- scheduler -------------------------------------------------------------
 SIDS=()
 for sid in M1 M2 M3 M4 M5 M6 M7 M8 M9 M10; do
@@ -404,6 +471,22 @@ while (( i < ${#SIDS[@]} )); do
     wait
     i=$((i + CONCURRENCY))
 done
+
+# Config-edit scenarios are Go-only and run after the install matrix; they
+# reuse a real M1 install from the same runner build.
+EIDS=()
+for eid in E1 E2; do
+    if [[ -n "$ONLY" ]]; then
+        case ",$ONLY," in *,$eid,*) ;; *) continue ;; esac
+    fi
+    EIDS+=("$eid")
+done
+if (( ${#EIDS[@]} > 0 )); then
+    for eid in "${EIDS[@]}"; do
+        edit_job "$eid" &
+    done
+    wait
+fi
 
 python3 "$SUITE/compare/report.py" --evidence "$EVID" --matrix "$SUITE/matrix.json" \
     --diffs "$SUITE/expected_diffs.json" >/dev/null 2>&1 || \

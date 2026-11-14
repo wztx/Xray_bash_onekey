@@ -190,6 +190,45 @@ def verdict_for(scenario, bash, go, entries):
     return "MATCH", []
 
 
+def render_edits(evidence, matrix):
+    """Go-only config-edit rows: before/after plus restart-failure rollback."""
+    entries = matrix.get("edits", [])
+    if not entries:
+        return []
+    lines = ["## 配置编辑场景（xray config edit，Go）", "",
+             "| 场景 | 编辑 rc | 检查项 | L4 改前/改后 | 判定 | 说明 |",
+             "|---|---|---|---|---|---|"]
+    for entry in entries:
+        eid = entry["id"]
+        base = os.path.join(evidence, eid, "go")
+        checks = read_json(os.path.join(base, "edit", "checks.json"), {})
+        before = read_json(os.path.join(base, "edit", "L4-before", "connectivity.json"), {})
+        after = read_json(os.path.join(base, "edit", "L4-after", "connectivity.json"), {})
+        got = checks.get("checks", {})
+        wanted = checks.get("wanted") or entry.get("checks", [])
+
+        def mark(value):
+            return "ok" if value is True else ("fail" if value is False else "-")
+
+        passed = bool(checks) and checks.get("allPassed") is True and \
+            before.get("ok") is True and after.get("ok") is True
+        notes = []
+        if not checks:
+            notes.append("缺 checks.json")
+        if before.get("ok") is not True:
+            notes.append("改前 L4 未通过")
+        if after.get("ok") is not True:
+            notes.append("改后/回滚后 L4 未通过")
+        detail = ", ".join("%s:%s" % (name, mark(got.get(name))) for name in wanted) or "-"
+        lines.append("| %s %s | %s | %s | %s / %s | **%s** | %s |" % (
+            eid, entry.get("name", ""), checks.get("editRc", "-"), detail,
+            mark(before.get("ok")), mark(after.get("ok")),
+            "PASS" if passed else "BLOCKER",
+            ("; ".join(notes) or entry.get("notes", "")).replace("|", "/")))
+    lines.append("")
+    return lines
+
+
 def render(evidence, matrix, entries):
     scenarios = matrix.get("install", [])
     lines = []
@@ -265,6 +304,7 @@ def render(evidence, matrix, entries):
             entry.get("id"), entry.get("scenario"), entry.get("layer"),
             entry.get("path"), ed_state(entry)))
     lines.append("")
+    lines.extend(render_edits(evidence, matrix))
     lines.append("## 未覆盖/未验证")
     lines.append("")
     lines.append("- M8（ACME）：`eligible:false`，按计划记 HARNESS-BLOCKED。")

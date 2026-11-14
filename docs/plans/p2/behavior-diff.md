@@ -12,6 +12,10 @@
 | G5 | M2 CLI 形态 | bash 语义是 `--mode reality --nginx-bin`，Go 用 `--mode reality-nginx` | 可改（兼容别名） | CLI 校验 | 已改：`--mode reality --nginx-bin` 自动映射为 `reality-nginx`，原形态不变 |
 | G6 | M9 监听 / M5–M7 `--binary` | 测试 argv 缺参或未显式监听 | 测试侧问题 | 测试 argv | 已改测试：补 `--binary`；M9 显式 `--listen 0.0.0.0 --allow-non-loopback` |
 | G7 | 安全闸 | Go 的 loopback 监听保护、配置覆盖保护、容器写入确认 | 需拍板（仅在必须动时） | — | 均未删除。M9 通过显式参数放行；D3 通过 `--rewrite-config` 才覆盖；relay 保留混合安装拒绝 |
+| G8 | M10 relay 文件集合 | Go relay 角色多写 `00-xray.conf`/`03-isolate.conf` 占位，主配置凭空 include 两个不存在的文件；bash relay 只有 `relay-stream.conf` | 可改 | 安装落地 | 已改：`InstallSpec.RelayOnly` 控制占位创建；`RewriteMainConfig` 的 Stream 分支仅节点模式 include；M10 两侧文件集合一致 |
+| G9 | 附加传输端口 | Go 用 `base+1` 硬偏移，不探测占用、不排除 bash 保留端口 | 可改 | 生成逻辑 | 已改：ws/gRPC 10000–10999、xHTTP 11000–11999 升序候选 + bind 探测 + 保留端口排除 + `--ws-port/--grpc-port/--xhttp-port` 覆盖；65535 不回绕 |
+| G10 | TLS 回环端口 | Go TLS 模式回环 inbound 与 Nginx 共用公网端口，重启必 `EADDRINUSE` | 可改 | 生成逻辑 | 已改：回环 inbound 取传输端口池，Nginx 独占公网端口；share 仍用公网端口 |
+| G11 | 配置编辑能力 | bash 靠菜单改配置，无配置级自检、patch 语义与回滚 | 可改（Go 领先） | CLI + 生成 + 安装落地 | 已新增 `xray config edit`（规格 `interactive-config-editing-discussion.md` v1.0）：patch、自检、备份、回滚、二次确认、`--dry-run`/`--no-restart`/`--json` |
 
 ## 需拍板 / 仍保留
 
@@ -57,4 +61,8 @@
 - G2：`go test ./internal/deploy -run Relay`；P2 M10 两侧 L1–L4（客户端经中转容器回源）。
 - G3：P2 M4 manifest 中 nginx 目录/权限对比。
 - G4/G5：`go test ./internal/deploy`；P2 所有场景第 2 轮 rc=0、L6 无漂移；M2 两种 CLI 形态 generate 等价。
+- G8：M10 两侧 `/etc/idleleo/conf/nginx` 文件集合一致（仅 `nginx`、`nginx.default`、`relay-stream.conf`），`nginx -t` 通过，L4 回源与 L6 幂等通过。
+- G9：`go test ./internal/xraycfg -run Port`；第三方占用 10000 时自动选 10001 且输出 warning；M3/M7 两侧端口行为对齐。
+- G10：`go test ./internal/xraycfg`；M4/M7 两侧 rc/L4/幂等通过，TLS 场景重启成功。
+- G11：`go test ./internal/xraycfg ./internal/deploy`；P2 E1/E2 均 PASS（`evidence/step3-edit2/p2/install-matrix.md`）。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

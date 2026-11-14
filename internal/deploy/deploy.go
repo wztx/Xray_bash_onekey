@@ -1015,7 +1015,9 @@ WantedBy=multi-user.target
 `, userLine, bin, config)
 }
 
-func service(ctx context.Context, args ...string) error {
+// service and waitActive are seams so the edit transaction can be exercised
+// without systemd in sandbox tests.
+var service = func(ctx context.Context, args ...string) error {
 	res, err := host.Run(ctx, host.ExecSpec{Path: "systemctl", Args: args, Timeout: 15 * time.Second})
 	if err != nil {
 		return err
@@ -1038,7 +1040,7 @@ func queryService(ctx context.Context, args ...string) string {
 	return out
 }
 
-func waitActive(ctx context.Context) string {
+var waitActive = func(ctx context.Context) string {
 	for i := 0; i < 20; i++ {
 		state := serviceQuery(ctx, "is-active", "xray")
 		if state == "active" || state == "failed" {

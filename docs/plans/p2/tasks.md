@@ -1,13 +1,13 @@
 # P2 任务清单
 
-前置：`docs/plans/p2/spec.md` 的差异清单 G1–G7 与 D1–D5 按新口径执行（Go 对齐 bash，
+前置：`docs/plans/p2/spec.md` 的差异清单 G1–G11 与 D1–D9 按新口径执行（Go 对齐 bash，
 真做不到才保留差异并附证据）。不动 `install.sh`；不静默删除安全闸。
 
 ## T0 差异清单
 
-- [x] 产出 `docs/plans/p2/behavior-diff.md`：G1–G7 逐条标注「可改 / 不可改 / 需拍板」、
+- [x] 产出 `docs/plans/p2/behavior-diff.md`：G1–G11 逐条标注「可改 / 不可改 / 需拍板」、
   改动层（CLI 校验 / 生成逻辑 / 安装落地）、证据与验证方式。
-- 验证：清单覆盖 M3、M10、M4、D3、M2、M9/M5–M7、安全闸七项。
+- 验证：清单覆盖 M3、M10、M4、D3、M2、M9/M5–M7、安全闸七项，以及 G8–G11 三项补强。
 
 ## T1 矩阵与 argv
 
@@ -69,7 +69,42 @@
 - [ ] 按主题拆 commit：差异清单+spec、Go 生成逻辑、relay 安装、重复安装/别名、矩阵+驱动+runner。
 - [ ] 汇报：差异清单分类、每项改法与验证、矩阵前后对比、仍保留的能力缺口。
 
+## T9 G8 relay 文件集合（安装落地）
+
+- [x] `nginx.InstallSpec.RelayOnly`：relay 不创建 `00-xray.conf`/`03-isolate.conf` 占位。
+- [x] `RewriteMainConfig`：Stream 分支仅节点模式 include 两个占位文件；节点模式不变。
+- [x] 单测：relay 不生成/不 include 占位文件、不含 http glob。
+- 验证：M10 两侧 `/etc/idleleo/conf/nginx` 文件集合一致、`nginx -t` ok、L4 回源与 L6 幂等不回归。
+
+## T10 G9/G10 端口策略（生成逻辑）
+
+- [x] 去掉 `base+1`：ws/gRPC 10000–10999、xHTTP 11000–11999 升序候选。
+- [x] 生成前 bind 探测避让；排除 9403/9404/9443/9444 与已用端口；65535 不回绕 1。
+- [x] `--ws-port/--grpc-port/--xhttp-port` 显式覆盖，越界/重复/保留/占用直接报错。
+- [x] 探测跳过时输出 warning，安装前即报错而不是等服务启动失败。
+- [x] G10：TLS 回环 inbound 使用传输端口池，Nginx 独占公网端口。
+- 验证：M3/M7 两侧 2 轮 rc=0、L4 ok、幂等 ok；第三方占用 10000 时自动选 10001 并留 warning。
+
+## T11 G11 `xray config edit`（CLI + 生成 + 安装落地）
+
+- [x] `internal/xraycfg/edit.go`：spec 还原、patch、严格 diff 白名单、隐含 keep。
+- [x] `internal/deploy/edit.go`：`xray -test` 前置、`nginx -t`、备份
+  `/etc/idleleo/backup/edit-<ts>/`、快照与重启失败回滚、`--no-restart`、relay 编辑。
+- [x] `internal/cli/xrayedit.go` + flags：6 项第一梯队、`--dry-run`/`--yes`/`--json`、
+  断线项二次确认、与 `--rewrite-config` 冲突 rc=2。
+- [x] 单测：patch 只改目标字段、自检失败零落盘、重启失败回滚、dry-run。
+- [x] 矩阵 E1（改前改后）与 E2（重启失败回滚）+ 驱动/runner/报告。
+- 验证：E1/E2 PASS；reality、reality-nginx、TLS、relay 手工验证通过。
+
+## T12 规格与文档收口
+
+- [x] 讨论稿升级为正式规格 v1.0（`interactive-config-editing-discussion.md`）。
+- [x] `spec.md` 补 G8–G11、D6–D9 与实现文件。
+- [x] `behavior-diff.md` 补 G8–G11 与证据。
+- 验证：三份文档口径一致，矩阵场景与规格 §11 对应。
+
 # Task Dependencies
 
 - T2/T3/T4 可并行，T7 依赖 T2–T6，T8 依赖 T7。
 - T5 依赖 T7 的 M4 证据，结论可能回写 spec。
+- T9–T11 按序独立验收；T12 依赖 T9–T11 完成。

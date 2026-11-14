@@ -111,6 +111,11 @@ var commandFlags = map[string]flagSpec{
 	"xray share":     specOf([]string{"path", "inbound", "public-port", "host", "public-security", "user"}),
 	"xray relay":     specOf([]string{"target", "listen-port", "listen-address", "out"}, "force"),
 	"xray user list": specOf([]string{"path", "inbound"}),
+	"xray config edit": specOf(
+		[]string{"path", "listen", "port", "public-port", "transport", "ws-path", "xhttp-path",
+			"grpc-service-name", "target", "server-names", "uuid", "ws-port", "grpc-port", "xhttp-port",
+			"relay-target", "relay-listen-port"},
+		"dry-run", "no-restart", "yes", "rewrite-config", "container", "allow-non-loopback"),
 	"xray user add": specOf(
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "flow", "short-id", "level", "path", "fault"},
 		"container"),

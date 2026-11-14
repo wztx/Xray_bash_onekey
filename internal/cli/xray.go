@@ -27,7 +27,7 @@ func xrayCommand(ctx context.Context, opts Options, cfg config, a *app.App, args
 	// Nested commands (user/cert) own their own flag vocabulary; everything
 	// else is validated against the two-word path.
 	flagArgs, flagKey := rest, "xray "+sub
-	if (sub == "user" || sub == "cert") && len(rest) > 0 {
+	if (sub == "user" || sub == "cert" || sub == "config") && len(rest) > 0 {
 		flagArgs, flagKey = rest[1:], flagKey+" "+rest[0]
 	}
 	if rc, ok := checkFlags(opts, cfg, flagArgs, flagKey); ok && rc != 0 {
@@ -50,6 +50,8 @@ func xrayCommand(ctx context.Context, opts Options, cfg config, a *app.App, args
 		return xrayRecover(ctx, opts, cfg, rest)
 	case "cert":
 		return xrayCert(ctx, opts, cfg, rest)
+	case "config":
+		return xrayConfig(ctx, opts, cfg, rest)
 	default:
 		return usage(opts, cfg.lang, "help")
 	}

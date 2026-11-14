@@ -572,3 +572,39 @@ func TestGenerateRealityBalanceBackendsAndRefusals(t *testing.T) {
 		t.Fatal("decoy policy must be refused by the generator")
 	}
 }
+
+// TestRealitySingleTransportKeepsRealityPrimary pins the Bash parity rule:
+// adding a single transport to a Reality node appends it on the next port while
+// Reality remains the primary raw inbound.
+func TestRealitySingleTransportKeepsRealityPrimary(t *testing.T) {
+	g, err := Generate(Spec{Mode: ModeReality, Transport: TransportWS, Domain: "example.com", Port: 443})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(g.Config, &root); err != nil {
+		t.Fatalf("generated config is not JSON: %v", err)
+	}
+	inbounds, ok := root["inbounds"].([]any)
+	if !ok || len(inbounds) != 2 {
+		t.Fatalf("expected two inbounds, got %v", root["inbounds"])
+	}
+	primary := inbounds[0].(map[string]any)
+	if sec := primary["streamSettings"].(map[string]any)["security"]; sec != "reality" {
+		t.Fatalf("primary inbound security = %v, want reality", sec)
+	}
+	added := inbounds[1].(map[string]any)
+	stream := added["streamSettings"].(map[string]any)
+	if stream["network"] != TransportWS {
+		t.Fatalf("added inbound network = %v, want ws", stream["network"])
+	}
+	if port := added["port"].(float64); port != 444 {
+		t.Fatalf("added inbound port = %v, want 444", port)
+	}
+	if g.Transport != TransportWS {
+		t.Fatalf("generated transport = %q, want ws", g.Transport)
+	}
+	if !strings.Contains(g.ShareURI, "security=reality") {
+		t.Fatalf("share URI lost reality security: %s", g.ShareURI)
+	}
+}

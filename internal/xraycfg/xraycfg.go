@@ -163,9 +163,10 @@ func Generate(spec Spec) (Generated, error) {
 		switch spec.Transport {
 		case "", TransportRaw:
 			spec.Transport = TransportRaw
-		case TransportMulti:
-			// Reality stays the primary raw inbound; the other transports are
-			// added as loopback inbounds, matching Bash reality_add_more.
+		case TransportMulti, TransportWS, TransportGRPC, TransportXHTTP:
+			// Reality stays the primary raw inbound; the requested transport is
+			// added alongside it, matching Bash reality_add_more (which also
+			// keeps Reality as the primary entry for single and multi additions).
 			if spec.Mode == ModeRealityBalance {
 				return Generated{}, fmt.Errorf("reality-balance does not support transport %q", spec.Transport)
 			}
@@ -409,6 +410,21 @@ func portOffset(base, offset int) int {
 	return p
 }
 
+// defaultRealityExtraEmail mirrors the per-transport emails Bash assigns to
+// reality_add_more inbounds.
+func defaultRealityExtraEmail(transport string) string {
+	switch transport {
+	case TransportWS:
+		return "ws@hey.run"
+	case TransportGRPC:
+		return "me@hey.run"
+	case TransportXHTTP:
+		return "xhttp@hey.run"
+	default:
+		return defaultEmail
+	}
+}
+
 func inboundTag(transport string) string {
 	switch transport {
 	case TransportWS:
@@ -425,10 +441,22 @@ func inboundTag(transport string) string {
 // buildInboundDefs returns the inbounds for the requested transport. The
 // primary inbound always uses inboundPort so callers can address it by index 0.
 func buildInboundDefs(spec Spec, transport string, inboundPort int) []inboundDef {
+	realityMode := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx
 	if transport != TransportMulti {
 		if transport == TransportRaw {
 			return []inboundDef{{tag: inboundTag(transport), transport: TransportRaw, port: inboundPort,
 				listen: spec.Listen, email: spec.Email, flow: spec.Flow}}
+		}
+		if realityMode {
+			// Bash reality_add_more: the Reality raw inbound remains the primary
+			// entry and the selected transport is appended on the next port.
+			return []inboundDef{
+				{tag: inboundTag(TransportRaw), transport: TransportRaw, port: inboundPort,
+					listen: spec.Listen, email: spec.Email, flow: spec.Flow},
+				{tag: inboundTag(transport), transport: transport, port: portOffset(spec.Port, 1),
+					listen: spec.Listen, email: defaultRealityExtraEmail(transport),
+					path: spec.Path, serviceName: spec.ServiceName},
+			}
 		}
 		return []inboundDef{{
 			tag: inboundTag(transport), transport: transport, port: inboundPort, listen: spec.Listen,

@@ -100,6 +100,9 @@ type Spec struct {
 	WSPort    int
 	GRPCPort  int
 	XHTTPPort int
+	// SkipPortProbe disables the pre-flight bind check. In-place edits set it
+	// because the running service legitimately owns the ports it preserves.
+	SkipPortProbe bool
 }
 
 // extraPort returns the operator-pinned port for an added transport, or zero
@@ -368,6 +371,12 @@ func Generate(spec Spec) (Generated, error) {
 	}
 
 	inboundPort := spec.Port
+	if spec.Mode == ModeTLS {
+		// Bash gives the loopback Xray inbound a port from the transport pool and
+		// lets Nginx own the public port. Sharing the public port makes Xray and
+		// Nginx contend for the same TCP socket (any restart then fails).
+		inboundPort = 0
+	}
 	if spec.Mode == ModeRealityBalance || spec.Mode == ModeRealityNginx {
 		if err := validateBalance(spec); err != nil {
 			return Generated{}, err
@@ -386,6 +395,7 @@ func Generate(spec Spec) (Generated, error) {
 	extraListen := extraListenFor(spec)
 	picker := newPortPicker(extraListen, spec.Mode == ModeReality || spec.Mode == ModeRealityNginx,
 		inboundPort, spec.PublicPort)
+	picker.skipBind = spec.SkipPortProbe
 	defs, err := buildInboundDefs(spec, g.Transport, inboundPort, picker)
 	if err != nil {
 		return Generated{}, err
@@ -463,6 +473,10 @@ type portPicker struct {
 	used     map[int]bool
 	listen   string
 	reserved bool
+	// skipBind is set for in-place edits: the running service already owns the
+	// ports being preserved, so probing them would always report a false
+	// conflict. Range, duplicate and reserved-port checks still apply.
+	skipBind bool
 	warnings []string
 }
 
@@ -503,7 +517,7 @@ func (p *portPicker) pick(transport string, explicit int) (int, error) {
 		if p.used[explicit] {
 			return 0, fmt.Errorf("%s port %d is already used by another inbound", transport, explicit)
 		}
-		if !canBindTCP(probeAddr(p.listen), explicit) {
+		if !p.skipBind && !canBindTCP(probeAddr(p.listen), explicit) {
 			return 0, fmt.Errorf("%s port %d is already in use on %s", transport, explicit, p.listen)
 		}
 		p.used[explicit] = true
@@ -516,7 +530,7 @@ func (p *portPicker) pick(transport string, explicit int) (int, error) {
 		if p.used[port] {
 			continue
 		}
-		if !canBindTCP(probeAddr(p.listen), port) {
+		if !p.skipBind && !canBindTCP(probeAddr(p.listen), port) {
 			p.warnings = append(p.warnings, fmt.Sprintf("%s port %d is in use on %s; trying the next candidate", transport, port, p.listen))
 			continue
 		}
@@ -558,6 +572,19 @@ func inboundTag(transport string) string {
 // primary inbound always uses inboundPort so callers can address it by index 0.
 // Added transports take their ports from picker.
 func buildInboundDefs(spec Spec, transport string, inboundPort int, picker *portPicker) ([]inboundDef, error) {
+	if inboundPort == 0 {
+		// TLS mode: the primary inbound takes a port from the transport pool so
+		// Nginx can hold the public port alone.
+		primary := transport
+		if transport == TransportMulti {
+			primary = TransportWS
+		}
+		port, err := picker.pick(primary, spec.extraPort(primary))
+		if err != nil {
+			return nil, err
+		}
+		inboundPort = port
+	}
 	realityMode := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx
 	if transport != TransportMulti {
 		if transport == TransportRaw {

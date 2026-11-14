@@ -118,7 +118,7 @@ func TestGenerateMultiTransportNone(t *testing.T) {
 }
 
 func TestGenerateMultiTransportTLSRoutesEachInbound(t *testing.T) {
-	g, err := Generate(Spec{Mode: ModeTLS, Domain: "example.com", Transport: TransportMulti, Port: 10080})
+	g, err := Generate(Spec{Mode: ModeTLS, Domain: "example.com", Transport: TransportMulti, Port: 10080, WSPort: 10080})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestGenerateMultiTransportTLSRoutesEachInbound(t *testing.T) {
 }
 
 func TestGenerateTLSMatchesBashFront(t *testing.T) {
-	g, err := Generate(Spec{Mode: ModeTLS, Domain: "example.com", Transport: TransportWS, Port: 10080})
+	g, err := Generate(Spec{Mode: ModeTLS, Domain: "example.com", Transport: TransportWS, Port: 10080, WSPort: 10080})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"math/big"
 	"net"
@@ -103,39 +104,152 @@ func TestEditPortDoesNotProbeOrigin(t *testing.T) {
 	}
 }
 
-func TestDefaultProbeOriginTLSLocal(t *testing.T) {
-	srv := tlsListener(t)
+func TestDefaultProbeOriginRejectsUntrustedChain(t *testing.T) {
+	srv := tlsListener(t, nil, "example.com")
 	defer srv.Close()
-	addr := srv.Addr().String()
-	if err := defaultProbeOrigin(context.Background(), addr, "example.com"); err != nil {
-		t.Fatalf("probe against local TLS listener: %v", err)
+	err := defaultProbeOrigin(context.Background(), srv.Addr().String(), "example.com")
+	if !errors.Is(err, ErrOriginUnreachable) {
+		t.Fatalf("self-signed origin err = %v, want ErrOriginUnreachable", err)
 	}
 	if err := defaultProbeOrigin(context.Background(), "127.0.0.1:1", ""); !errors.Is(err, ErrOriginUnreachable) {
 		t.Fatalf("closed port err = %v", err)
 	}
 }
 
-// tlsListener starts a local TLS server with a throwaway certificate so the
-// probe can be exercised without external network access.
-func tlsListener(t *testing.T) net.Listener {
+func TestDefaultProbeOriginTrustedCA(t *testing.T) {
+	ca := newTestCA(t)
+	trustCA(t, ca)
+	srv := tlsListener(t, ca, "local.test")
+	defer srv.Close()
+	addr := srv.Addr().String()
+	if err := defaultProbeOrigin(context.Background(), addr, "local.test"); err != nil {
+		t.Fatalf("probe against CA-signed origin: %v", err)
+	}
+	// The certificate names local.test only, so a different SNI must fail the
+	// hostname check.
+	if err := defaultProbeOrigin(context.Background(), addr, "other.test"); !errors.Is(err, ErrOriginUnreachable) {
+		t.Fatalf("hostname mismatch err = %v, want ErrOriginUnreachable", err)
+	}
+}
+
+// TestProbeTLSConfigIsOrdinaryClient guards the bar the probe holds the origin
+// to: full chain and hostname verification, but nothing Reality itself does not
+// require (no insecure skip, no pinned minimum version).
+func TestProbeTLSConfigIsOrdinaryClient(t *testing.T) {
+	cfg := probeTLSConfig("www.example.com")
+	if cfg.InsecureSkipVerify {
+		t.Fatal("probe must verify the origin certificate chain")
+	}
+	if cfg.RootCAs != nil {
+		t.Fatal("probe must use the system roots, not a private pool")
+	}
+	if cfg.MinVersion != 0 {
+		t.Fatalf("probe must not pin a TLS version, got %#x", cfg.MinVersion)
+	}
+	if cfg.ServerName != "www.example.com" {
+		t.Fatalf("server name = %q", cfg.ServerName)
+	}
+}
+
+// testCA is a throwaway certificate authority used to prove the probe accepts
+// a chain it can verify without touching the host trust store.
+type testCA struct {
+	cert *x509.Certificate
+	key  *ecdsa.PrivateKey
+	pem  []byte
+}
+
+func newTestCA(t *testing.T) *testCA {
+	t.Helper()
+	key := generateKey(t)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "e2e local CA"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &testCA{
+		cert: cert,
+		key:  key,
+		pem:  pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+	}
+}
+
+func (ca *testCA) leaf(t *testing.T, dnsNames ...string) tls.Certificate {
+	t.Helper()
+	key := generateKey(t)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: dnsNames[0]},
+		DNSNames:     dnsNames,
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+func trustCA(t *testing.T, ca *testCA) {
+	t.Helper()
+	old := probeTLSConfig
+	probeTLSConfig = func(sni string) *tls.Config {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(ca.pem) {
+			t.Fatal("cannot load test CA")
+		}
+		return &tls.Config{ServerName: sni, RootCAs: pool}
+	}
+	t.Cleanup(func() { probeTLSConfig = old })
+}
+
+func generateKey(t *testing.T) *ecdsa.PrivateKey {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpl := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "example.com"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
+	return key
+}
+
+// tlsListener starts a local TLS server so the probe can be exercised without
+// external network access. A nil ca produces a self-signed certificate.
+func tlsListener(t *testing.T, ca *testCA, dnsNames ...string) net.Listener {
+	t.Helper()
+	var cert tls.Certificate
+	if ca != nil {
+		cert = ca.leaf(t, dnsNames...)
+	} else {
+		key := generateKey(t)
+		tmpl := &x509.Certificate{
+			SerialNumber: big.NewInt(1),
+			Subject:      pkix.Name{CommonName: dnsNames[0]},
+			DNSNames:     dnsNames,
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(time.Hour),
+		}
+		der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cert = tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 	}
-	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
-		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}},
-	})
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -413,7 +413,11 @@ run_edit_l4() {
     local client="e2e-$RUN_ID-$eid-go-$label"
     local secret="$WORK/secret/$eid-$label"
     mkdir -p "$out/edit"
-    E2E_L4_URL="http://example.com/" E2E_L4_MARKER="Example Domain" \
+    # E4's driver exports the throwaway CA that signed its local origin; the
+    # post-edit client container has to trust the same chain.
+    local extra_ca=""
+    [[ -f "$out/edit/local-ca.crt" ]] && extra_ca="$out/edit/local-ca.crt"
+    E2E_EXTRA_CA="$extra_ca" E2E_L4_URL="http://example.com/" E2E_L4_MARKER="Example Domain" \
         bash "$SUITE/collect/l4.sh" "$server" "$client" "$IMAGE_TAG" "$net" \
             reality "$DOMAIN" "$WORK/seed/xray" "$secret" "$out/edit/L4-$label" reality \
             >"$out/edit/L4-$label.log" 2>&1

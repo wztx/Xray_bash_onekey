@@ -16,6 +16,10 @@
 #
 # transport selects the inbound to probe (auto|ws|grpc|xhttp). For profile
 # `none` the client connects to the inbound listen port instead of 443.
+#
+# E2E_EXTRA_CA names a PEM CA on the HOST that must be trusted by the client
+# container (used by E4, whose local origin is signed by a throwaway CA).
+# Empty means no injection, so every other scenario keeps the stock trust store.
 set -uo pipefail
 
 SERVER="$1"
@@ -28,6 +32,7 @@ XRAY_BIN="$7"
 SECRET_DIR="$8"
 OUT="$9"
 TRANSPORT="${10:-auto}"
+EXTRA_CA="${E2E_EXTRA_CA:-}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_URL="${E2E_L4_URL:-http://example.com/}"
 MARKER="${E2E_L4_MARKER:-Example Domain}"
@@ -77,6 +82,12 @@ docker run -d --name "$CLIENT" --network "$NETWORK" --label e2e.side=client \
     --entrypoint sleep "$IMAGE" infinity >/dev/null || fail "cannot start client container"
 
 docker cp "$SECRET_DIR/client.json" "$CLIENT:/client/client.json" >/dev/null 2>&1 || fail "cannot place client config"
+if [[ -n "$EXTRA_CA" ]]; then
+    [[ -f "$EXTRA_CA" ]] || fail "extra CA not found: $EXTRA_CA"
+    docker cp "$EXTRA_CA" "$CLIENT:/tmp/e2e-extra-ca.crt" >/dev/null 2>&1 || fail "cannot place extra CA"
+    docker exec "$CLIENT" sh -c 'cat /tmp/e2e-extra-ca.crt >> /etc/ssl/certs/ca-certificates.crt' \
+        || fail "cannot trust extra CA in client"
+fi
 docker exec -d "$CLIENT" sh -c '/opt/xray/xray run -c /client/client.json >/client/client.log 2>&1' || fail "cannot start client xray"
 sleep 2
 docker exec "$CLIENT" sh -c 'ss -lnt | grep -q 127.0.0.1:1080' || fail "client socks did not listen"

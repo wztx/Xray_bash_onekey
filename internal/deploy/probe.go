@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
@@ -24,9 +23,18 @@ const (
 	probeTLSTimeout  = 5 * time.Second
 )
 
+// probeTLSConfig is a seam so tests can trust a throwaway CA without touching
+// the host trust store. It must stay equivalent to an ordinary client: system
+// roots, no OCSP lookups, Go's default TLS version range.
+var probeTLSConfig = func(sni string) *tls.Config {
+	return &tls.Config{ServerName: sni}
+}
+
 // defaultProbeOrigin checks that the Reality target accepts a TCP connection
-// and, when an SNI is supplied on a TLS port, completes a TLS handshake. It
-// does not verify the certificate chain: Reality only needs a live TLS origin.
+// and, when an SNI is supplied, completes a TLS handshake that validates the
+// certificate chain and the server name. That is the same bar a client of the
+// stolen certificate faces; no extra checks (OCSP, minimum TLS version) are
+// layered on top.
 func defaultProbeOrigin(ctx context.Context, target, sni string) error {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
@@ -42,14 +50,10 @@ func defaultProbeOrigin(ctx context.Context, target, sni string) error {
 		return fmt.Errorf("%w: tcp connect to %s failed: %v", ErrOriginUnreachable, addr, err)
 	}
 	defer conn.Close()
-	if sni == "" || !tlsPort(port) {
+	if sni == "" {
 		return nil
 	}
-	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName:         sni,
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS12,
-	})
+	tlsConn := tls.Client(conn, probeTLSConfig(sni))
 	defer tlsConn.Close()
 	_ = tlsConn.SetDeadline(time.Now().Add(probeTLSTimeout))
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
@@ -59,21 +63,13 @@ func defaultProbeOrigin(ctx context.Context, target, sni string) error {
 	return nil
 }
 
-func tlsPort(port string) bool {
-	n, err := strconv.Atoi(port)
-	if err != nil {
-		return false
-	}
-	return n == 443 || n == 8443
-}
-
 func probeDescription(target, sni string) string {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
 		host, port = target, "443"
 	}
-	if sni != "" && tlsPort(port) {
-		return fmt.Sprintf("tcp+tls %s (sni %s)", net.JoinHostPort(host, port), sni)
+	if sni != "" {
+		return fmt.Sprintf("tcp+tls(verify) %s (sni %s)", net.JoinHostPort(host, port), sni)
 	}
 	return "tcp " + net.JoinHostPort(host, port)
 }

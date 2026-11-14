@@ -44,39 +44,83 @@ EOF
 fi
 
 # E4 needs a live TLS origin on loopback so the edit-time probe can succeed
-# without external network access.
+# without external network access. The origin certificate is signed by a local
+# CA that is trusted inside this container (probe + Reality handshake) and
+# exported for the L4 client container (l4.sh E2E_EXTRA_CA), so the chain is
+# verified exactly like a public origin's.
 ORIGIN_PID=""
 if [[ "$SCENARIO" == "E4" ]]; then
     ORIGIN_DIR=/tmp/e2e-origin-tls
     rm -rf "$ORIGIN_DIR"; mkdir -p "$ORIGIN_DIR"
-    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=local.test" \
-        -keyout "$ORIGIN_DIR/key.pem" -out "$ORIGIN_DIR/cert.pem" >/dev/null 2>&1
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=e2e local CA" \
+        -addext "basicConstraints=critical,CA:TRUE" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" \
+        -keyout "$ORIGIN_DIR/ca.key" -out "$ORIGIN_DIR/ca.crt" >/dev/null 2>&1
+    openssl req -newkey rsa:2048 -nodes -subj "/CN=local.test" \
+        -keyout "$ORIGIN_DIR/key.pem" -out "$ORIGIN_DIR/server.csr" >/dev/null 2>&1
+    cat >"$ORIGIN_DIR/server.ext" <<'EOF'
+subjectAltName=DNS:local.test
+basicConstraints=CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+EOF
+    openssl x509 -req -in "$ORIGIN_DIR/server.csr" -days 1 \
+        -CA "$ORIGIN_DIR/ca.crt" -CAkey "$ORIGIN_DIR/ca.key" -CAcreateserial \
+        -extfile "$ORIGIN_DIR/server.ext" -out "$ORIGIN_DIR/leaf.pem" >/dev/null 2>&1
+    cat "$ORIGIN_DIR/leaf.pem" "$ORIGIN_DIR/ca.crt" >"$ORIGIN_DIR/fullchain.pem"
+
+    # Trust the CA here. Go reads the Debian/Ubuntu bundle, so appending works
+    # with or without the ca-certificates helper; run the helper first so its
+    # regeneration cannot drop the entry.
+    if command -v update-ca-certificates >/dev/null 2>&1; then
+        mkdir -p /usr/local/share/ca-certificates
+        cp "$ORIGIN_DIR/ca.crt" /usr/local/share/ca-certificates/e2e-local-ca.crt
+        update-ca-certificates >/dev/null 2>&1 || true
+    fi
+    cat "$ORIGIN_DIR/ca.crt" >>/etc/ssl/certs/ca-certificates.crt
+    # Exported next to the other edit evidence; l4.sh picks it up for the
+    # post-edit client container.
+    cp "$ORIGIN_DIR/ca.crt" "$DIR/local-ca.crt"
+
     cat >"$ORIGIN_DIR/serve.py" <<'PY'
-import socket, ssl, sys, time
+import socket, ssl, sys, threading, time
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 ctx.load_cert_chain(sys.argv[1], sys.argv[2])
+# Reality dials the target with the client's fingerprint, which offers
+# h2/http1.1; a real origin negotiates ALPN, so the fixture must too or the
+# server treats the connection as invalid and falls back.
+ctx.set_alpn_protocols(["h2", "http/1.1"])
 srv = socket.socket()
 srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 srv.bind(("127.0.0.1", 8443))
-srv.listen(8)
-while True:
-    conn, _ = srv.accept()
+srv.listen(16)
+
+
+def handle(conn):
     try:
         tls = ctx.wrap_socket(conn, server_side=True)
         # Reality dials the target to borrow its certificate; keep the session
-        # open long enough for that exchange to finish.
+        # open long enough for that exchange to finish. One thread per
+        # connection keeps the dry-run preview probe and the real edit probe
+        # from serialising behind this sleep, like a real origin would.
         time.sleep(5)
         tls.close()
     except Exception:
         conn.close()
+
+
+while True:
+    conn, _ = srv.accept()
+    threading.Thread(target=handle, args=(conn,), daemon=True).start()
 PY
-    python3 "$ORIGIN_DIR/serve.py" "$ORIGIN_DIR/cert.pem" "$ORIGIN_DIR/key.pem" >"$DIR/origin.log" 2>&1 &
+    python3 "$ORIGIN_DIR/serve.py" "$ORIGIN_DIR/fullchain.pem" "$ORIGIN_DIR/key.pem" \
+        >"$DIR/origin.log" 2>&1 &
     ORIGIN_PID=$!
     for _ in $(seq 1 20); do
         (exec 3<>/dev/tcp/127.0.0.1/8443) 2>/dev/null && { exec 3<&- 3>&-; break; }
         sleep 0.2
     done
-    log "started local TLS origin pid=$ORIGIN_PID"
+    log "started local TLS origin pid=$ORIGIN_PID (local CA trusted)"
 fi
 
 expected_target=""

@@ -251,13 +251,13 @@
       "id": "E4",
       "name": "config-edit-target-probe-ok",
       "base": "M1",
-      "method": "M1 安装 -> 驱动内起本地 TLS 回源 :8443（CN=local.test）-> config edit --target 127.0.0.1:8443 --server-names local.test -> 期望 rc=0、target 落盘、探测记录、服务 active、L4 仍通（客户端 SNI 随 serverNames 变为 local.test）",
+      "method": "M1 安装 -> 驱动内起本地 TLS 回源 :8443（本地 CA 签发 local.test，CA 注入服务端与客户端容器信任库）-> config edit --target 127.0.0.1:8443 --server-names local.test -> 期望 rc=0、target 落盘、探测记录、服务 active、L4 仍通（客户端 SNI 随 serverNames 变为 local.test）",
       "go": {
         "argv": ["idleleo", "xray", "config", "edit", "--target", "127.0.0.1:8443", "--server-names", "local.test", "--container", "--json"]
       },
       "checks": ["editRcZero", "configChanged", "targetApplied", "probeReported", "serviceActive"],
       "l4": "reality",
-      "notes": "E2E 用本地 TLS listener 代替外网回源，不给生产加 --skip-probe 后门。"
+      "notes": "探测按系统根证书校验链 + hostname（与 Reality 要求等价，不额外查 OCSP、不锁 TLS 版本）；E2E 用受信本地 CA 签发的本地 TLS listener 代替外网回源，不给生产加 --skip-probe 后门。本地 origin 必须像真实站点一样协商 ALPN（h2/http1.1），否则 Reality 会判为 invalid 并回退（已取证）。"
     }
   ],
   "upgrade": {

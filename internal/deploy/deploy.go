@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -464,6 +465,18 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		RuntimeSHA256:     store.HashBytes(configBytes),
 		OwnedResources:    owned,
 		UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
+	}
+	// Snapshot what Bash keeps in install_config.json. The port is required, so
+	// an install whose entry port cannot be determined omits the snapshot rather
+	// than writing metadata that could never be loaded again.
+	if port := installPort(spec, configBytes, nginxDir); port > 0 {
+		target, serverNames := realityOrigin(configBytes)
+		meta.Install = &store.InstallSnapshot{
+			EngineVersion: engineVersion(ctx, installedBin),
+			Port:          port,
+			Target:        target,
+			ServerNames:   serverNames,
+		}
 	}
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	metaBytes = append(metaBytes, '\n')
@@ -1156,6 +1169,101 @@ func promoteFrontMode(paths host.Paths, mode, transport string) (string, string)
 		return xraycfg.ModeRealityNginx, transport
 	}
 	return xraycfg.ModeTLS, transport
+}
+
+// engineVersion reports the Xray version the way Bash records it: the second
+// field of `xray version`. A failure is not fatal; the snapshot simply omits
+// the version instead of failing the install. Tests replace it to stay
+// independent of the host binary.
+var engineVersion = func(ctx context.Context, bin string) string {
+	res, err := host.Run(ctx, host.ExecSpec{Path: bin, Args: []string{"version"}, Timeout: 30 * time.Second})
+	if err != nil || res.ExitCode != 0 {
+		return ""
+	}
+	fields := strings.Fields(res.Stdout)
+	if len(fields) < 2 {
+		return ""
+	}
+	return fields[1]
+}
+
+// realityOrigin reads the effective Reality target and serverNames from the
+// runtime config, so the metadata snapshot also describes adopted configs
+// rather than only what the current request asked for.
+func realityOrigin(raw []byte) (target string, serverNames []string) {
+	var doc struct {
+		Inbounds []struct {
+			StreamSettings struct {
+				Security        string `json:"security"`
+				RealitySettings struct {
+					Target      string   `json:"target"`
+					Dest        string   `json:"dest"`
+					ServerNames []string `json:"serverNames"`
+				} `json:"realitySettings"`
+			} `json:"streamSettings"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return "", nil
+	}
+	for _, in := range doc.Inbounds {
+		if in.StreamSettings.Security != "reality" {
+			continue
+		}
+		rs := in.StreamSettings.RealitySettings
+		target = rs.Target
+		if target == "" {
+			target = rs.Dest
+		}
+		return target, append([]string(nil), rs.ServerNames...)
+	}
+	return "", nil
+}
+
+// installPort is the port clients dial, mirroring Bash's install_config "port":
+// the managed Nginx front when the mode has one, the Xray inbound otherwise.
+// Explicit flags win so a reinstall that moves the front records the new value,
+// and a preserved config reports where it really listens.
+func installPort(spec InstallSpec, config []byte, nginxDir string) int {
+	if spec.PublicPort > 0 {
+		return spec.PublicPort
+	}
+	if nginxDir != "" {
+		if body, err := os.ReadFile(filepath.Join(nginxDir, nginx.MainConf)); err == nil {
+			if port := listenPort(string(body), 0); port > 0 {
+				return port
+			}
+		}
+	}
+	if spec.Port > 0 {
+		return spec.Port
+	}
+	return firstInboundPort(config)
+}
+
+// firstInboundPort reads the port the runtime config listens on. Xray accepts
+// both a number and a numeric string there, and so does Bash when it backfills
+// install_config from the runtime.
+func firstInboundPort(raw []byte) int {
+	var doc struct {
+		Inbounds []struct {
+			Port any `json:"port"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return 0
+	}
+	for _, in := range doc.Inbounds {
+		switch v := in.Port.(type) {
+		case float64:
+			return int(v)
+		case string:
+			if port, err := strconv.Atoi(v); err == nil {
+				return port
+			}
+		}
+	}
+	return 0
 }
 
 func tlsLabel(mode string) string {

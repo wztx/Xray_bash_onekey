@@ -512,6 +512,10 @@ func updateMetadataAfterEdit(paths host.Paths, res xraycfg.EditResult, config []
 	}
 	meta.Transport = res.Transport
 	meta.RuntimeSHA256 = store.HashBytes(config)
+	if meta.Install != nil {
+		// Keep the snapshot describing the live origin, not the pre-edit one.
+		meta.Install.Target, meta.Install.ServerNames = realityOrigin(config)
+	}
 	if res.Mode == xraycfg.ModeTLS {
 		meta.TLS = "tls"
 	}

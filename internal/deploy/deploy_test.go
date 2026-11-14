@@ -14,6 +14,7 @@ import (
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/nginx"
+	"github.com/hello-yunshu/Xray_bash_onekey/internal/store"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
 )
 
@@ -608,6 +609,40 @@ func TestRewriteConfigIsExplicitAndReported(t *testing.T) {
 	}
 	if got := readFile(t, filepath.Join(root, configRel)); strings.Contains(got, `"inbounds":[]`) {
 		t.Fatal("rewrite did not install the requested generation")
+	}
+}
+
+func TestInstallMetadataSnapshot(t *testing.T) {
+	root := sandbox(t)
+	oldVersion := engineVersion
+	engineVersion = func(context.Context, string) string { return "26.10.31" }
+	t.Cleanup(func() { engineVersion = oldVersion })
+
+	if _, err := Install(context.Background(), InstallSpec{
+		Root: root, SourceBinary: stubXray(t), Mode: xraycfg.ModeReality,
+		Domain: "www.example.org", Target: "www.example.org:443",
+		ServerNames: []string{"www.example.org"}, Port: 8443, NoService: true,
+	}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	meta, _, err := store.LoadMetadata(host.Paths{Root: root})
+	if err != nil {
+		t.Fatalf("metadata written by install must load: %v", err)
+	}
+	if meta.Install == nil {
+		t.Fatal("install must record the version/port/origin snapshot")
+	}
+	if meta.Install.EngineVersion != "26.10.31" {
+		t.Fatalf("engine version = %q", meta.Install.EngineVersion)
+	}
+	if meta.Install.Port != 8443 {
+		t.Fatalf("snapshot port = %d, want the operator-facing 8443", meta.Install.Port)
+	}
+	if meta.Install.Target != "www.example.org:443" {
+		t.Fatalf("snapshot target = %q", meta.Install.Target)
+	}
+	if len(meta.Install.ServerNames) != 1 || meta.Install.ServerNames[0] != "www.example.org" {
+		t.Fatalf("snapshot serverNames = %v", meta.Install.ServerNames)
 	}
 }
 

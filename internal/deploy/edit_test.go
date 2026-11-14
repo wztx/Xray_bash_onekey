@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
+	"github.com/hello-yunshu/Xray_bash_onekey/internal/store"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
 )
 
@@ -117,6 +118,51 @@ func TestEditConfigSelfCheckFailureWritesNothing(t *testing.T) {
 	backups, _ := filepath.Glob(filepath.Join(root, "etc/idleleo/backup/edit-*"))
 	if len(backups) != 0 {
 		t.Fatalf("no backup should be written before the candidate passes, found %v", backups)
+	}
+}
+
+func TestEditConfigRefreshesInstallSnapshot(t *testing.T) {
+	root, _, _ := editSandbox(t)
+	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	oldProbe := probeOrigin
+	probeOrigin = func(context.Context, string, string) error { return nil }
+	t.Cleanup(func() { probeOrigin = oldProbe })
+
+	paths, err := host.NewPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metaPath, err := paths.Join(paths.ManagerMetadata(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"schemaVersion":1,"activeEngine":"xray","role":"node","tls":"Reality","transport":"raw",` +
+		`"runtimeConfigPath":"etc/idleleo/conf/xray/config.json",` +
+		`"install":{"engineVersion":"26.10.31","port":8443,"target":"old.example.org:443","serverNames":["old.example.org"]}}` + "\n"
+	if err := os.WriteFile(metaPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := EditConfig(context.Background(), EditSpec{
+		Root: root, Request: xraycfg.EditRequest{Target: "new.example.org:443"}, NoRestart: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	meta, _, err := store.LoadMetadata(paths)
+	if err != nil {
+		t.Fatalf("metadata must stay loadable after an edit: %v", err)
+	}
+	if meta.Install == nil {
+		t.Fatal("edit dropped the install snapshot")
+	}
+	if meta.Install.Target != "new.example.org:443" {
+		t.Fatalf("snapshot target = %q, want the post-edit origin", meta.Install.Target)
+	}
+	if meta.Install.Port != 8443 || meta.Install.EngineVersion != "26.10.31" {
+		t.Fatalf("edit must not invent a new port/version: %+v", meta.Install)
 	}
 }
 

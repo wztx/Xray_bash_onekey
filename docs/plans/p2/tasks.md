@@ -122,14 +122,19 @@
 
 ## T14 第二梯队（顺序已拍板）
 
-- [ ] S1 target/serverNames 主动回源探测（TCP connect + 可选 TLS；失败阻断保存）。
-  - 代码与单测完成：`internal/deploy/probe.go`、`probe_test.go`；E3（拒连目标）通过，
-    rc=2、SHA 不变、无备份、服务 active。
-  - **E4（可达目标）未收口**：本地自签 TLS 回源能通过探测并落盘，但改后 Reality L4
-    失败（curl 56）。说明「TCP+不校验证书」挡不住会断线的 target；已上报待拍板
-    （三条选项：保持现状并去掉 E4 的 L4 断言 / 探测改为校验证书链+hostname /
-    E4 改用第二个公网真实回源）。
-- [ ] C4 metadata 补版本与端口/target/serverNames 快照。
+- [x] S1 target/serverNames 主动回源探测（TCP connect + 证书链/hostname 校验；失败阻断保存）。
+  - `internal/deploy/probe.go` / `probe_test.go`：无 SNI 只做 TCP；有 SNI 时按系统根证书
+    校验证书链与 hostname（不加 OCSP、不锁 TLS 版本）；失败 rc=2、零落盘、无备份。
+  - E3（拒连目标）与 E4（受信本地 CA 回源）均 PASS；E4 证据显示本地 origin 必须协商
+    ALPN，否则 Reality 判 invalid 回退（探测本身不背这个锅）。
+  - 证据：`tests/e2e-diff/evidence/s1-edit-probe-ca`（全量矩阵，E1–E4 PASS）。
+- [x] C4 metadata 补版本与端口/target/serverNames 快照。
+  - `internal/store/metadata.go`：新增 `install{engineVersion,port,target,serverNames}`，
+    port 必须在 1–65535，否则按损坏处理（rc=4）；旧 metadata 无该字段照常加载。
+  - `internal/deploy/deploy.go`：安装时写入快照；端口取「显式 --public-port → 托管 Nginx
+    前端 listen → 显式 --port → 运行配置首个 inbound」，与 bash install_config 的 port 同义。
+  - `internal/deploy/edit.go`：编辑后用生效配置刷新 target/serverNames，端口/版本不动。
+  - 单测：store 快照加载与 port=0 拒绝、安装写入快照、编辑刷新快照；`go test` 三包全绿。
 - [ ] C3 日志轮转/清理（ED-004）。
 - [ ] C1 fail2ban 接入（ED-002）。
 - [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。

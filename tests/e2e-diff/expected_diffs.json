@@ -302,7 +302,7 @@
         "/etc/idleleo/conf/nginx"
       ],
       "decision": "register",
-      "reason": "安装参数由 v1/metadata.json 承担，conf/nginx 空目录无内容；缺失的参数快照见第二梯队 C4。",
+      "reason": "安装参数由 v1/metadata.json 承担（C4 起含 engineVersion/port/target/serverNames 快照），conf/nginx 空目录无内容。",
       "owner": "hello-yunshu",
       "approved_by": "release-gate",
       "expires": "2027-03-31",

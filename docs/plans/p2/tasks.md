@@ -190,9 +190,14 @@
   - 矩阵：OPS-09 由 `go-missing` 改为 `must-match`，新增 OPS-31 `must-match`；
     ED-001 从 `expected_diffs.json` 移除。
   - 故障摘除 OPS-32：`max_fails=2 fail_timeout=10` 被动摘除双端 PASS
-    （`evidence/s2-failover-0503/p2/OPS-32/ops.json`）：真实 TLS 流量打到
-    `backend-a:9001`/`backend-b:9002`，`kill -9` 一个后 84 次请求零 5xx、全由存活
-    后端返回；每个 worker 的失败尝试止于 `max_fails=2` 并静默约 12s，重启后重新选中。
+    （`evidence/ops32-failover-0523/p2/OPS-32/ops.json`，ws 与 reality 两条上游）：
+    - ws：真实 TLS 流量打到 `backend-a:9001`/`backend-b:9002`，`kill -9` 一个后
+      84 次请求零 5xx、全由存活后端返回；每个 worker 的失败尝试止于 `max_fails=2`
+      并静默约 12s，重启后重新选中。
+    - reality：真实 TLS 1.3 ClientHello 经 stream 入口，84 次连接全到存活端、零连接失败；
+      标记后端只做 TCP 应答，故只证明 stream 选路与摘除，**不外推 Reality 握手**。
+    - harness 在两侧删除安装自带的回环后端：`xray balance remove` 按设计拒绝删回环，
+      没有对称的菜单入口；删除动作与原因记录在 `ops.json` 的 `loopbackRemovedBy`。
 - [ ] S3 证书路径/域名。
 - [ ] S4 Reality 握手参数。
 - [ ] C2 流量阻断 ruleset（ED-003）。

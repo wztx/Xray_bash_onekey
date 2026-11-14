@@ -142,10 +142,17 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
   Go 用 `xray balance add|list|remove`，两侧 `<host>.wsServers` 与
   `<host>.realityServers` 内容同形、删除后同时消失。
 - G15：`max_fails=2 fail_timeout=10` 被动摘除，OPS-32 双端 PASS
-  （`evidence/s2-failover-0503/p2/OPS-32/ops.json`）：M4 / `--mode tls --transport ws`
-  安装后两侧各起 `backend-a:9001`、`backend-b:9002` 两个真实后端，客户端经 Nginx TLS
-  打真实 `/ws` 流量；`kill -9` A 后 84 次请求全部由 B 返回、零 5xx/零连接失败，
-  每个 nginx worker 对 A 的失败尝试均止于 `max_fails=2`，随后约 12s 不再尝试
-  （`.../OPS-32/<side>/dead-attempts.txt` 为原始 error.log 行），重启 A 后重新出现 A。
-  注：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，故不存在全局统一静默窗。
+  （`evidence/ops32-failover-0523/p2/OPS-32/ops.json`，ws 与 reality 两条上游均 PASS）：
+  - **ws 上游**：M4 / `--mode tls --transport ws` 安装后两侧各起 `backend-a:9001`、
+    `backend-b:9002`，客户端经 Nginx TLS 打真实 `/ws` 流量；`kill -9` A 后 84 次请求
+    全部由 B 返回、零 5xx/零连接失败，每个 nginx worker 对 A 的失败尝试止于
+    `max_fails=2`，随后约 12s 不再尝试，重启 A 后重新出现 A。
+  - **reality 上游**：bash `1>1>5>1` / Go `--mode reality-balance --role primary` 安装后
+    用同一组后端；客户端发真实 TLS 1.3 ClientHello（SNI 命中 `*.serverNames`）经 stream
+    入口，标记后端回明文标记以标识实际对端；`kill -9` A 后 84 次连接全部到 B、
+    零连接失败（stream `proxy_next_upstream` 在 connect 失败时重试），摘除/恢复时间点
+    与 ws 同形。
+  - **限制（不得外推）**：reality 侧的对端是普通 TCP 标记服务，不做 Reality 握手；
+    本项只证明 nginx stream 的对端选择与被动摘除，不证明 Reality/VLESS 端到端会话。
+  - 注：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，故不存在全局统一静默窗。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

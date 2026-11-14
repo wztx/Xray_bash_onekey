@@ -418,8 +418,21 @@ def render_ops(evidence, matrix):
         def mark(value):
             return "true" if value is True else ("false" if value is False else "-")
 
+        upstreams = data.get("upstreams")
         backends = data.get("backends")
-        if backends is not None:
+        if upstreams:
+            # OPS-32 drills several upstreams; show each one per side.
+            def upstream_text(side):
+                parts = []
+                for name in sorted(upstreams):
+                    items = ((upstreams.get(name) or {}).get("backends") or {}).get(side) or []
+                    parts.append("%s: %s" % (name, ",".join(items) if items else "-"))
+                return "%s: %s" % (side, " ‖ ".join(parts))
+            observation = "%s ‖ %s" % (upstream_text("bash"), upstream_text("go"))
+            detail = " / ".join(
+                "%s %s" % (name, (upstreams.get(name) or {}).get("verdict"))
+                for name in sorted(upstreams))
+        elif backends is not None:
             # Load-balancer rows (OPS-09 / OPS-31) observe backends and files.
             def backend_text(side):
                 items = backends.get(side) or []

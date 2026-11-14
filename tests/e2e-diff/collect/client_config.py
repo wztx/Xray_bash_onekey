@@ -18,11 +18,26 @@ import subprocess
 import sys
 
 
-def first_inbound(cfg):
-    for inbound in cfg.get('inbounds') or []:
-        if (inbound.get('protocol') or '').lower() == 'vless':
+def vless_inbounds(cfg):
+    return [inbound for inbound in cfg.get('inbounds') or []
+            if (inbound.get('protocol') or '').lower() == 'vless']
+
+
+def pick_inbound(cfg, transport):
+    inbounds = vless_inbounds(cfg)
+    if not inbounds:
+        raise SystemExit('no vless inbound in server config')
+    if not transport or transport in ('auto', 'first'):
+        return inbounds[0]
+    for inbound in inbounds:
+        stream = inbound.get('streamSettings') or {}
+        network = (stream.get('network') or 'tcp').lower()
+        security = (stream.get('security') or 'none').lower()
+        if transport == 'reality' and security == 'reality':
             return inbound
-    raise SystemExit('no vless inbound in server config')
+        if network == transport.lower():
+            return inbound
+    raise SystemExit('no vless inbound with transport %s' % transport)
 
 
 def reality_public_key(private_key):
@@ -44,8 +59,9 @@ def cert_sha256(path):
 
 def build(args):
     cfg = json.load(open(args.config))
-    inbound = first_inbound(cfg)
+    inbound = pick_inbound(cfg, args.transport)
     stream = inbound.get('streamSettings') or {}
+    server_port = inbound.get('port') if args.use_inbound_port else args.server_port
     clients = (inbound.get('settings') or {}).get('clients') or []
     if not clients:
         raise SystemExit('no client entry in server config')
@@ -55,7 +71,7 @@ def build(args):
         'protocol': 'vless',
         'settings': {'vnext': [{
             'address': args.server_address,
-            'port': args.server_port,
+            'port': server_port,
             'users': [{'id': client['id'], 'encryption': 'none'}],
         }]},
         'streamSettings': {},
@@ -64,7 +80,7 @@ def build(args):
     if client.get('flow'):
         user['flow'] = client['flow']
 
-    if args.mode == 'reality':
+    if args.mode == 'reality' and stream.get('security') == 'reality':
         rs = stream.get('realitySettings') or {}
         private_key = rs.get('privateKey') or (rs.get('settings') or {}).get('privateKey')
         if not private_key:
@@ -82,19 +98,31 @@ def build(args):
                 'spiderX': rs.get('spiderX') or '/',
             },
         }
-    elif args.mode == 'tls':
-        ws = stream.get('wsSettings') or {}
+    elif args.mode in ('tls', 'none'):
+        network = (stream.get('network') or 'tcp').lower()
         domain = args.domain
-        outbound['streamSettings'] = {
-            'network': 'ws',
-            'security': 'tls',
+        settings = {'network': network, 'security': args.mode}
+        if args.mode == 'tls':
             # Xray 26.x removed allowInsecure and still chain-validates under
             # verifyPeerCertByName; pinning the DER digest is the supported way
             # to trust the self-signed certificate.
-            'tlsSettings': {'serverName': domain,
-                            'pinnedPeerCertSha256': cert_sha256(args.cert)},
-            'wsSettings': {'path': ws.get('path') or '/', 'headers': {'Host': domain}},
-        }
+            settings['tlsSettings'] = {
+                'serverName': domain,
+                'pinnedPeerCertSha256': cert_sha256(args.cert),
+            }
+        if network == 'ws':
+            ws = stream.get('wsSettings') or {}
+            ws_settings = {'path': ws.get('path') or '/'}
+            if args.mode == 'tls':
+                ws_settings['headers'] = {'Host': domain}
+            settings['wsSettings'] = ws_settings
+        elif network == 'grpc':
+            grpc = stream.get('grpcSettings') or {}
+            settings['grpcSettings'] = {'serviceName': grpc.get('serviceName') or ''}
+        elif network == 'xhttp':
+            xhttp = stream.get('xhttpSettings') or {}
+            settings['xhttpSettings'] = {'path': xhttp.get('path') or '/'}
+        outbound['streamSettings'] = settings
     else:
         raise SystemExit('unsupported client mode %s' % args.mode)
 
@@ -111,9 +139,13 @@ def build(args):
 def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
-    parser.add_argument('--mode', required=True, choices=['reality', 'tls'])
+    parser.add_argument('--mode', required=True, choices=['reality', 'tls', 'none'])
+    parser.add_argument('--transport', default='auto',
+                        help='auto|ws|grpc|xhttp|reality; selects the matching inbound')
     parser.add_argument('--server-address', required=True)
-    parser.add_argument('--server-port', required=True, type=int)
+    parser.add_argument('--server-port', default=443, type=int)
+    parser.add_argument('--use-inbound-port', action='store_true',
+                        help='connect to the inbound listen port (ws-only mode)')
     parser.add_argument('--domain', required=True)
     parser.add_argument('--cert', default='/etc/idleleo/cert/xray.crt',
                         help='server certificate whose DER digest is pinned (tls mode)')

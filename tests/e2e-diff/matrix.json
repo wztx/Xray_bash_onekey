@@ -8,7 +8,12 @@
     "officialUpgradePath": "R1",
     "r2Scope": ["M1", "M4"],
     "expectedDiffPolicy": "per-entry owner+approved_by+expires; pending counts as BLOCKER",
-    "ciIntegration": "not in this round"
+    "ciIntegration": "not in this round",
+    "D1_m3_reality_ws": "Go aligned to bash: Reality keeps the raw primary inbound and adds ws/grpc/xhttp alongside it; M3 Go installs and is tested (no capability gap)",
+    "D2_m10_relay": "Go aligned to bash: xray install --role relay installs managed Nginx stream, writes relay-stream.conf, includes it in the main conf and starts the service",
+    "D3_repeat_install": "Go default adopts an existing runtime config unchanged (bash parity); --keep-config remains explicit, --rewrite-config still forces regeneration",
+    "D4_m9_listen": "both sides bind 0.0.0.0 for L4 (bash menu ws-only listen prompt; Go --listen 0.0.0.0 --allow-non-loopback); loopback default guard kept",
+    "D5_m4_nginx_dir": "M4 nginx directory judged from P2 manifest evidence first; change Go only if a real on-disk difference appears"
   },
   "inputs": {
     "uuid": "7a4ab30c-b199-4840-a31e-316f4f73a72b",
@@ -53,11 +58,11 @@
       "tls": "Reality",
       "transport": null,
       "bash": {"entry": ["install.sh"], "menu": "1>1>1", "answersRef": "M2"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "reality", "--nginx-bin", "/usr/local/nginx/sbin/nginx", "--container"], "verified": false},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "reality-nginx", "--domain", "www.cloudflare.com", "--target", "www.cloudflare.com", "--port", "443", "--container"], "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "repeat": 2,
       "eligible": true,
-      "notes": "Go 侧 nginx 前置是否有等价物待 P1 用 install --help 核实；若无，记录为 capability gap"
+      "notes": "2026-11-14 核实：Go 的等价模式是 --mode reality-nginx（xray generate rc=0）；原 --mode reality --nginx-bin 不是 Nginx 前置语义。bash 走菜单 1>1（preset）。"
     },
     {
       "id": "M3",
@@ -65,12 +70,12 @@
       "profile": "reality_transport",
       "tls": "Reality",
       "transport": "ws",
-      "bash": {"entry": ["install.sh"], "menu": "1>1>3", "answersRef": "M3"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "reality", "--transport", "ws", "--container"], "verified": false},
+      "bash": {"entry": ["install.sh"], "menu": "1>1>3", "answersRef": "M3", "transport": "1"},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "reality", "--transport", "ws", "--domain", "www.cloudflare.com", "--target", "www.cloudflare.com", "--port", "443", "--container"], "env": {"IDLELEO_ALLOW_SYSTEM_WRITES": "I_ACCEPT_CONTAINER_ONLY"}, "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"],
       "repeat": 2,
       "eligible": true,
-      "notes": ""
+      "notes": "Go 已按 bash reality_add_more 对齐：Reality raw 主 inbound + ws 附加 inbound（端口 +1）；L4 分别验证 reality 与 ws。"
     },
     {
       "id": "M4",
@@ -92,7 +97,7 @@
       "tls": "self-signed",
       "transport": "grpc",
       "bash": {"entry": ["install.sh", "-1"], "answersRef": "M5"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "tls", "--transport", "grpc", "--domain", "example.com", "--container"], "verified": false},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "tls", "--transport", "grpc", "--domain", "example.com", "--container"], "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "repeat": 2,
       "eligible": true,
@@ -105,7 +110,7 @@
       "tls": "self-signed",
       "transport": "xhttp",
       "bash": {"entry": ["install.sh", "-1"], "answersRef": "M6"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "tls", "--transport", "xhttp", "--domain", "example.com", "--container"], "verified": false},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "tls", "--transport", "xhttp", "--domain", "example.com", "--container"], "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "repeat": 2,
       "eligible": true,
@@ -118,7 +123,7 @@
       "tls": "self-signed",
       "transport": "ws+grpc+xhttp",
       "bash": {"entry": ["install.sh", "-1"], "answersRef": "M7"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "tls", "--transport", "ws+grpc+xhttp", "--domain", "example.com", "--container"], "verified": false},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "tls", "--transport", "ws+grpc+xhttp", "--domain", "example.com", "--container"], "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"],
       "repeat": 2,
       "eligible": true,
@@ -143,12 +148,12 @@
       "profile": "transport_only",
       "tls": "none",
       "transport": "ws",
-      "bash": {"entry": ["install.sh", "-3"], "answersRef": "M9"},
-      "go": {"argv": ["idleleo", "xray", "install", "--mode", "none", "--transport", "ws", "--container"], "verified": false},
+      "bash": {"entry": ["install.sh"], "menu": "1>2>2", "transport": "1", "listen": "0.0.0.0", "answersRef": "M9"},
+      "go": {"argv": ["idleleo", "xray", "install", "--binary", "/usr/local/bin/xray", "--mode", "none", "--transport", "ws", "--listen", "0.0.0.0", "--allow-non-loopback", "--container"], "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"],
       "repeat": 2,
       "eligible": true,
-      "notes": "a2 已验证"
+      "notes": "2026-11-14 核实：--mode none --transport ws 可生成；默认 listen=127.0.0.1，跨容器 L4 必须显式 0.0.0.0（已批准 D4-A）。bash 改走菜单 1>2>2 以获得监听地址提示。"
     },
     {
       "id": "M10",
@@ -157,11 +162,11 @@
       "tls": "none",
       "transport": "stream",
       "bash": {"entry": ["install.sh", "--install-relay"], "answersRef": "M10"},
-      "go": {"argv": ["idleleo", "xray", "install", "--role", "relay", "--target", "origin.example.com:443", "--listen-port", "443", "--container"], "verified": false},
+      "go": {"argv": ["idleleo", "xray", "install", "--role", "relay", "--target", "origin.example.com:443", "--listen-port", "443", "--listen", "0.0.0.0", "--container"], "env": {"IDLELEO_ALLOW_SYSTEM_WRITES": "I_ACCEPT_CONTAINER_ONLY"}, "verified": true},
       "layers": ["L0", "L1", "L2", "L3", "L4", "L5"],
       "repeat": 2,
       "eligible": true,
-      "notes": "中转需要 origin 容器作为后端；无 TLS，连通性用 TCP 转发验证"
+      "notes": "Go 已按 bash 对齐：xray install --role relay 安装 managed Nginx（stream）、写 relay-stream.conf、在主配置顶层 include 并启服务；L4 经 Nginx stream 转发到 origin。"
     }
   ],
   "ops": [

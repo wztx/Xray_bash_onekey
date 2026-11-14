@@ -8,12 +8,17 @@
 #       --cert /etc/idleleo/cert/xray.crt --cert-key /etc/idleleo/cert/xray.key --container
 #
 # Environment:
-#   E2E_OUT      evidence directory for this side (required)
-#   E2E_PROFILE  reality | tls | relay (drives certificate seeding only)
+#   E2E_OUT       evidence directory for this round (required)
+#   E2E_PREV_OUT  round-1 evidence directory (round 2 only, for L6)
+#   E2E_SCENARIO  M1..M10
+#   E2E_ROUND     1 | 2 (round 2 appends --keep-config)
+#   E2E_PROFILE   reality | tls | relay (drives certificate seeding only)
 set -uo pipefail
 
 OUT="${E2E_OUT:?E2E_OUT required}"
 PROFILE="${E2E_PROFILE:?E2E_PROFILE required}"
+SCENARIO="${E2E_SCENARIO:?E2E_SCENARIO required}"
+ROUND="${E2E_ROUND:-1}"
 mkdir -p "$OUT"
 : >"$OUT/install.log"
 : >"$OUT/expect.log"
@@ -32,7 +37,7 @@ if [[ "$state" != running && "$state" != degraded ]]; then
     exit 2
 fi
 
-if [[ -f /seed/xray ]]; then
+if [[ "$PROFILE" != "relay" && -f /seed/xray ]]; then
     install -m 0755 /seed/xray /usr/local/bin/xray
     log "seeded_xray=$(/usr/local/bin/xray version 2>/dev/null | head -1)"
 fi
@@ -57,8 +62,13 @@ log "go_argv=$*"
 # The Go installer refuses writes to a real root unless this container-only
 # acknowledgement is present; `--container` alone is not sufficient.
 export IDLELEO_ALLOW_SYSTEM_WRITES=I_ACCEPT_CONTAINER_ONLY
+GO_ARGS=("$@")
+if [[ "$ROUND" == "2" ]]; then
+    GO_ARGS+=(--keep-config)
+    log "round2_mode=keep-config"
+fi
 set +e
-/usr/local/bin/idleleo xray install "$@" >>"$OUT/install.log" 2>&1
+/usr/local/bin/idleleo xray install "${GO_ARGS[@]}" >>"$OUT/install.log" 2>&1
 install_rc=$?
 set -e
 log "install_exit=$install_rc"
@@ -66,6 +76,12 @@ printf '%s\n' "$install_rc" >"$OUT/rc.txt"
 
 E2E_COLLECT_OUT="$OUT" bash /src/tests/e2e-diff/collect/manifest.sh >>"$OUT/capture.log" 2>&1 || true
 E2E_COLLECT_OUT="$OUT" bash /src/tests/e2e-diff/collect/runtime.sh >>"$OUT/capture.log" 2>&1 || true
+E2E_COLLECT_OUT="$OUT" bash /src/tests/e2e-diff/collect/logs.sh >>"$OUT/capture.log" 2>&1 || true
+crontab -l >"$OUT/cron.txt" 2>/dev/null || : >"$OUT/cron.txt"
+if [[ "$ROUND" == "2" && -n "${E2E_PREV_OUT:-}" ]]; then
+    E2E_IDEM_PREV="$E2E_PREV_OUT" E2E_IDEM_CUR="$OUT" \
+        bash /src/tests/e2e-diff/collect/idempotency.sh >>"$OUT/capture.log" 2>&1 || true
+fi
 
 RUNTIME_SRC="/etc/idleleo/conf/xray/config.json"
 mkdir -p "$OUT/config"

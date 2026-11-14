@@ -1,36 +1,38 @@
 #!/usr/bin/expect -f
-# Drives the REAL interactive install.sh (bash side) for the e2e-diff suite.
+# Drives the REAL interactive install.sh (bash side) for M1-M10.
 #
-# Derived from tests/go-parity/a2/drive_install.exp, extended with the TLS
-# (self-signed cert preseeded) and relay branches. a2 itself stays untouched.
+# Scenario dispatch is driven by E2E_SCENARIO. Round 1 answers the full fresh
+# wizard; round 2 (E2E_ROUND=2) takes the keep-config reinstall path and then
+# reacts only to prompts it actually sees, so a skipped setter cannot hang.
 #
 # Contract:
 #   * every answer is sent only after its own read prompt has been matched;
 #     there are no blind carriage returns;
-#   * `step` is used only where a generic "请输入:" read follows a unique
-#     section header; `ask` matches the unique prompt line itself and answers
-#     immediately (the read is already blocked at that point);
 #   * any unmatched prompt, unexpected main menu, EOF-before-prompt or timeout
 #     exits 124 and is reported as HARNESS-ERROR, never as a business result.
 #
 # Environment:
-#   E2E_LOG         transcript path (append)
-#   E2E_PROFILE     reality | tls | relay
-#   E2E_INSTALL_ARG e.g. -2 / -1 / --install-relay
-#   E2E_DOMAIN      domain (tls)
-#   E2E_TARGET      reality target domain
-#   E2E_PORT        public port
-#   E2E_LOCAL_IP    manual host for the TLS domain check
-#   E2E_RELAY_HOST  relay backend host
-#   E2E_RELAY_PORT  relay backend port
+#   E2E_LOG          transcript path (append)
+#   E2E_SCENARIO     M1..M10
+#   E2E_ROUND        1 | 2
+#   E2E_INSTALL_ARG  install.sh entry argument (e.g. -2 / -1 / --install-relay)
+#   E2E_MENU         "1>1", "1>3", "1>2>2" ... menu path for preset flows
+#   E2E_TRANSPORT    1 ws / 2 gRPC / 3 xHTTP / 5 ws+gRPC+xHTTP
+#   E2E_LISTEN_ADDR  ws-only listen address (M9)
+#   E2E_DOMAIN E2E_TARGET E2E_PORT E2E_LOCAL_IP E2E_RELAY_HOST E2E_RELAY_PORT
+#   E2E_TIMEOUT      expect timeout seconds (default 900)
 
-set timeout 900
+set timeout [expr {[info exists env(E2E_TIMEOUT)] ? $env(E2E_TIMEOUT) : 900}]
 
 set logf $env(E2E_LOG)
 log_file -a $logf
 
-set profile $env(E2E_PROFILE)
-set install_arg $env(E2E_INSTALL_ARG)
+set scenario $env(E2E_SCENARIO)
+set round [expr {[info exists env(E2E_ROUND)] ? $env(E2E_ROUND) : 1}]
+set install_arg [expr {[info exists env(E2E_INSTALL_ARG)] ? $env(E2E_INSTALL_ARG) : ""}]
+set menu_path [expr {[info exists env(E2E_MENU)] ? $env(E2E_MENU) : ""}]
+set transport [expr {[info exists env(E2E_TRANSPORT)] ? $env(E2E_TRANSPORT) : "1"}]
+set listen_addr [expr {[info exists env(E2E_LISTEN_ADDR)] ? $env(E2E_LISTEN_ADDR) : "0.0.0.0"}]
 set domain $env(E2E_DOMAIN)
 set target $env(E2E_TARGET)
 set port $env(E2E_PORT)
@@ -43,9 +45,6 @@ proc harness_error {msg} {
     exit 124
 }
 
-# step <header-regex> <prompt-regex> <answer> <label>
-# Two-stage: the header uniquely identifies the section, then the generic read
-# prompt (typically "请输入:") is answered.
 proc step {header prompt answer label} {
     expect {
         -re $header { }
@@ -62,8 +61,6 @@ proc step {header prompt answer label} {
     }
 }
 
-# ask <prompt-regex> <answer> <label>
-# The prompt line is itself the read point; match once and answer once.
 proc ask {prompt answer label} {
     expect {
         -re $prompt {
@@ -75,19 +72,28 @@ proc ask {prompt answer label} {
     }
 }
 
-puts "PROFILE=$profile ARG=$install_arg"
-spawn bash /src/install.sh $install_arg
+# Walk the interactive menu. Each element is one menu_read answer; the first
+# expect consumes the main menu prompt.
+proc navigate {path} {
+    foreach item [split $path ">"] {
+        expect {
+            -re {请输入选项} {
+                send "$item\r"
+                puts "STEP\[menu\]=$item"
+            }
+            eof { harness_error "menu: eof before prompt (item $item)" }
+            timeout { harness_error "menu: timeout before prompt (item $item)" }
+        }
+    }
+}
 
-if {$profile eq "reality"} {
-    # ip_check prints a numbered menu and then reads with a generic prompt.
+proc reality_identity {} {
+    global target port
     step {确定公网IP信息} {请输入[:：]} 2 ip
-
     ask {请输入端口} $port port
     ask {是否需要自定义 Xray 用户名} n email
     ask {是否需要自定义字符串映射} n uuid
     ask {确认域名符合要求后请输入} $target target
-    # The target probe may warn and re-ask; answering y accepts the target.
-    # Both branches converge on the serverNames section.
     expect {
         -re {是否仍要设置此域名} {
             send "y\r"
@@ -102,49 +108,237 @@ if {$profile eq "reality"} {
         timeout { harness_error "reality: timeout before serverNames" }
     }
     ask {是否需要自定义 shortIds} n shortIds
-    ask {是否添加用于负载均衡的 ws/gRPC 协议} n addMore
-    ask {是否需要自定义 privateKey} n privateKey
-    ask {是否需要设置防火墙} n firewall
-    ask {是否添加 Reality 负载均衡} n balance
-    ask {是否额外安装 nginx 前置保护} n nginxFront
-    ask {是否启用} n autoUpdate
-    ask {是否需要设置自动清理日志} n logrotate
-} elseif {$profile eq "tls"} {
-    ask {请输入你的域名信息} $domain domain
-    step {请选择网络与域名校验方式} {请输入[:：]} 4 dnsMode
-    # Manual mode still reads through the generic prompt; the preceding warning
-    # uniquely identifies this read.
-    step {此选项用于服务器商仅提供域名访问服务器} {请输入[:：]} $local_ip localIP
-    step {请选择传输协议} {请输入[:：]} 1 transport
-    ask {请输入端口} $port port
-    ask {是否需要自定义 ws inbound_port} n wsPort
-    ask {是否需要设置防火墙} n firewall
-    ask {是否需要自定义 ws 伪装路径} n wsPath
-    ask {是否需要自定义 Xray 用户名} n email
-    ask {是否需要自定义字符串映射} n uuid
-    ask {证书文件已存在, 是否保留} y keepCert
-    ask {是否启用} n autoUpdate
-    ask {是否需要设置自动清理日志} n logrotate
-} elseif {$profile eq "relay"} {
-    step {确定公网IP信息} {请输入[:：]} 2 ip
-    ask {落地服务器地址} $relay_host relayHost
-    ask {落地服务器端口} $relay_port relayPort
-    ask {本机监听端口} $port relayListen
-    ask {是否需要指定其他监听地址} n relayAddr
-    ask {是否需要设置防火墙} n firewall
-    ask {是否启用} n autoUpdate
-} else {
-    harness_error "unknown E2E_PROFILE '$profile'"
 }
 
-# Installation is expected to finish and exit. Dropping into the interactive
-# main menu means the non-interactive entry did not run to completion.
+proc tls_domain {} {
+    global domain local_ip
+    ask {请输入你的域名信息} $domain domain
+    step {请选择网络与域名校验方式} {请输入[:：]} 4 dnsMode
+    step {此选项用于服务器商仅提供域名访问服务器} {请输入[:：]} $local_ip localIP
+}
+
+proc tls_transport {transport} {
+    step {请选择传输协议} {请输入[:：]} $transport transport
+    ask {请输入端口} 443 port
+    if {$transport eq "1" || $transport eq "4" || $transport eq "5"} {
+        ask {是否需要自定义 ws inbound_port} n wsPort
+    }
+    if {$transport eq "2" || $transport eq "5"} {
+        ask {是否需要自定义 gRPC inbound_port} n grpcPort
+    }
+    if {$transport eq "3" || $transport eq "5"} {
+        ask {是否需要自定义 xHTTP inbound_port} n xhttpPort
+    }
+    ask {是否需要设置防火墙} n firewall
+    if {$transport eq "1" || $transport eq "4" || $transport eq "5"} {
+        ask {是否需要自定义 ws 伪装路径} n wsPath
+    }
+    if {$transport eq "2" || $transport eq "5"} {
+        ask {是否需要自定义 gRPC 伪装路径} n grpcPath
+    }
+    if {$transport eq "3" || $transport eq "5"} {
+        ask {是否需要自定义 xHTTP 伪装路径} n xhttpPath
+    }
+    ask {是否需要自定义 Xray 用户名} n email
+    ask {是否需要自定义字符串映射} n uuid
+}
+
+# Round 2: keep the existing config and change nothing, then answer only the
+# prompts the reinstall path really emits.
+proc reinstall_keep {} {
+    ask {检测到已有安装配置} 1 keepConfig
+    ask {请选择 \[1-5\]} 5 editNone
+}
+
+proc reinstall_reactive {} {
+    global port round
+    expect {
+        -re {请选择 TLS 版本} {
+            expect {
+                -re {请输入[:：]} { send "1\r"; puts "STEP\[tlsVersion\]=1" }
+                timeout { harness_error "round$round: timeout at tls version prompt" }
+            }
+            exp_continue
+        }
+        -re {检测到原域名配置存在, 是否跳过域名设置} { send "y\r"; puts "STEP\[keepDomain\]=y"; exp_continue }
+        -re {检测到原IP配置存在, 是否跳过IP设置} { send "y\r"; puts "STEP\[keepIP\]=y"; exp_continue }
+        -re {检测到 target 域名已配置, 是否保留} { send "y\r"; puts "STEP\[keepTarget\]=y"; exp_continue }
+        -re {是否需要设置防火墙} { send "n\r"; puts "STEP\[firewall\]=n"; exp_continue }
+        -re {证书文件已存在, 是否保留} { send "y\r"; puts "STEP\[keepCert\]=y"; exp_continue }
+        -re {是否需要自定义 ws inbound_port} { send "n\r"; puts "STEP\[wsPort\]=n"; exp_continue }
+        -re {是否需要自定义 gRPC inbound_port} { send "n\r"; puts "STEP\[grpcPort\]=n"; exp_continue }
+        -re {是否需要自定义 xHTTP inbound_port} { send "n\r"; puts "STEP\[xhttpPort\]=n"; exp_continue }
+        -re {是否需要自定义 ws 伪装路径} { send "n\r"; puts "STEP\[wsPath\]=n"; exp_continue }
+        -re {是否需要自定义 gRPC 伪装路径} { send "n\r"; puts "STEP\[grpcPath\]=n"; exp_continue }
+        -re {是否需要自定义 xHTTP 伪装路径} { send "n\r"; puts "STEP\[xhttpPath\]=n"; exp_continue }
+        -re {是否添加用于负载均衡} { send "n\r"; puts "STEP\[addMore\]=n"; exp_continue }
+        -re {是否需要自定义 privateKey} { send "n\r"; puts "STEP\[privateKey\]=n"; exp_continue }
+        -re {是否添加 Reality 负载均衡} { send "n\r"; puts "STEP\[balance\]=n"; exp_continue }
+        -re {是否额外安装 nginx 前置保护} { send "n\r"; puts "STEP\[nginxFront\]=n"; exp_continue }
+        -re {异常 SNI 处理方式} {
+            expect {
+                -re {请输入选项} { send "1\r"; puts "STEP\[sniGuard\]=1" }
+                timeout { harness_error "round$round: timeout at sni guard prompt" }
+            }
+            exp_continue
+        }
+        -re {是否启用} { send "n\r"; puts "STEP\[autoUpdate\]=n"; exp_continue }
+        -re {是否需要设置自动清理日志} { send "n\r"; puts "STEP\[logrotate\]=n"; exp_continue }
+        -re {落地服务器地址} { send "$::relay_host\r"; puts "STEP\[relayHost\]=$::relay_host"; exp_continue }
+        -re {落地服务器端口} { send "$::relay_port\r"; puts "STEP\[relayPort\]=$::relay_port"; exp_continue }
+        -re {本机监听端口} { send "$::port\r"; puts "STEP\[relayListen\]=$::port"; exp_continue }
+        -re {是否需要指定其他监听地址} { send "n\r"; puts "STEP\[relayAddr\]=n"; exp_continue }
+        -re {Xray 管理菜单} {
+            # Menu-driven entries return to the management menu after a
+            # successful reinstall; leave it cleanly instead of waiting for
+            # the 900s timeout.
+            expect {
+                -re {请输入选项} { send "0\r" }
+                timeout { harness_error "round$round: menu prompt not shown" }
+            }
+            expect {
+                eof {
+                    set rc [wait]
+                    puts "EXPECT_WAIT_STATUS=$rc"
+                    exit [lindex $rc 3]
+                }
+                timeout { harness_error "round$round: menu did not exit after 0" }
+            }
+        }
+        -re {安装失败|自动恢复失败} { puts "INSTALL_FAILED"; exit 1 }
+        eof {
+            set rc [wait]
+            puts "EXPECT_WAIT_STATUS=$rc"
+            exit [lindex $rc 3]
+        }
+        timeout { harness_error "round$round: timeout waiting for reinstall prompt" }
+    }
+}
+
+puts "SCENARIO=$scenario ROUND=$round ARG=$install_arg MENU=$menu_path"
+if {$install_arg ne ""} {
+    spawn bash /src/install.sh $install_arg
+} else {
+    spawn bash /src/install.sh
+}
+
+if {$round eq "2"} {
+    if {$scenario eq "M9"} {
+        navigate $menu_path
+        ask {是否继续} y wsOnly
+        ask {请输入选项} $transport transport
+        ask {是否需要指定其他监听地址} y listenCustom
+        ask {请输入监听地址} $listen_addr listenAddr
+        reinstall_keep
+        reinstall_reactive
+    } elseif {$scenario eq "M2"} {
+        navigate $menu_path
+        reinstall_keep
+        reinstall_reactive
+    } elseif {$scenario eq "M3"} {
+        navigate $menu_path
+        ask {请输入选项} $transport transport
+        reinstall_keep
+        reinstall_reactive
+    } elseif {$scenario eq "M10"} {
+        step {确定公网IP信息} {请输入[:：]} 2 ip
+        reinstall_reactive
+    } else {
+        reinstall_keep
+        reinstall_reactive
+    }
+    exit 124
+}
+
+switch -- $scenario {
+    M1 {
+        reality_identity
+        ask {是否添加用于负载均衡的 ws/gRPC 协议} n addMore
+        ask {是否需要自定义 privateKey} n privateKey
+        ask {是否需要设置防火墙} n firewall
+        ask {是否添加 Reality 负载均衡} n balance
+        ask {是否额外安装 nginx 前置保护} n nginxFront
+        ask {是否启用} n autoUpdate
+        ask {是否需要设置自动清理日志} n logrotate
+    }
+    M2 {
+        navigate $menu_path
+        reality_identity
+        ask {是否需要自定义 privateKey} n privateKey
+        ask {是否需要设置防火墙} n firewall
+        step {异常 SNI 处理方式} {请输入选项} 1 sniGuard
+        step {请选择 TLS 版本} {请输入[:：]} 1 tlsVersion
+        ask {是否启用} n autoUpdate
+        ask {是否需要设置自动清理日志} n logrotate
+    }
+    M3 {
+        navigate $menu_path
+        ask {请输入选项} $transport transport
+        reality_identity
+        ask {是否需要自定义 ws inbound_port} n wsPort
+        ask {是否需要自定义 ws 伪装路径} n wsPath
+        ask {是否需要自定义 privateKey} n privateKey
+        ask {是否需要设置防火墙} n firewall
+        ask {是否启用} n autoUpdate
+        ask {是否需要设置自动清理日志} n logrotate
+    }
+    M4 - M5 - M6 - M7 {
+        tls_domain
+        tls_transport $transport
+        ask {证书文件已存在, 是否保留} y keepCert
+        ask {是否启用} n autoUpdate
+        ask {是否需要设置自动清理日志} n logrotate
+    }
+    M9 {
+        navigate $menu_path
+        ask {是否继续} y wsOnly
+        ask {请输入选项} $transport transport
+        ask {是否需要指定其他监听地址} y listenCustom
+        ask {请输入监听地址} $listen_addr listenAddr
+        step {确定公网IP信息} {请输入[:：]} 2 ip
+        ask {是否需要自定义 ws inbound_port} n wsPort
+        ask {是否需要设置防火墙} n firewall
+        ask {是否需要自定义 ws 伪装路径} n wsPath
+        ask {是否需要自定义 Xray 用户名} n email
+        ask {是否需要自定义字符串映射} n uuid
+        ask {是否启用} n autoUpdate
+        ask {是否需要设置自动清理日志} n logrotate
+    }
+    M10 {
+        step {确定公网IP信息} {请输入[:：]} 2 ip
+        ask {落地服务器地址} $relay_host relayHost
+        ask {落地服务器端口} $relay_port relayPort
+        ask {本机监听端口} $port relayListen
+        ask {是否需要指定其他监听地址} n relayAddr
+        ask {是否需要设置防火墙} n firewall
+        ask {是否启用} n autoUpdate
+    }
+    default {
+        harness_error "unknown E2E_SCENARIO '$scenario'"
+    }
+}
+
+# Installation is expected to finish. Menu-driven entries exec back into the
+# management menu on success, so a main-menu prompt here means "install done";
+# send 0 to leave it. Failure paths log a rollback message first and are a
+# business failure (exit 1), not a harness error.
 expect {
-    -re {请输入选项} { harness_error "unexpected main menu after $profile install" }
+    -re {安装失败|自动恢复失败} { puts "INSTALL_FAILED"; exit 1 }
+    -re {请输入选项} {
+        send "0\r"
+        expect {
+            eof {
+                set rc [wait]
+                puts "EXPECT_WAIT_STATUS=$rc"
+                exit [lindex $rc 3]
+            }
+            timeout { harness_error "menu did not exit after 0" }
+        }
+    }
     eof {
         set rc [wait]
         puts "EXPECT_WAIT_STATUS=$rc"
         exit [lindex $rc 3]
     }
-    timeout { harness_error "install did not exit after $profile flow" }
+    timeout { harness_error "install did not exit after $scenario flow" }
 }

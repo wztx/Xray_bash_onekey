@@ -11,7 +11,11 @@
 #
 # Usage:
 #   l4.sh <server-container> <client-container> <image> <network> \
-#         <reality|tls> <domain> <xray-binary> <secret-dir> <evidence-out>
+#         <reality|tls|none> <domain> <xray-binary> <secret-dir> <evidence-out> \
+#         [transport]
+#
+# transport selects the inbound to probe (auto|ws|grpc|xhttp). For profile
+# `none` the client connects to the inbound listen port instead of 443.
 set -uo pipefail
 
 SERVER="$1"
@@ -23,6 +27,7 @@ DOMAIN="$6"
 XRAY_BIN="$7"
 SECRET_DIR="$8"
 OUT="$9"
+TRANSPORT="${10:-auto}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_URL="${E2E_L4_URL:-http://example.com/}"
 MARKER="${E2E_L4_MARKER:-Example Domain}"
@@ -47,12 +52,21 @@ server_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}
 [[ -n "$server_ip" ]] || fail "server container has no address"
 
 # Derive the client config inside the server container.
+EXTRA=()
+# Reality keeps its raw inbound on the public port; transports appended by
+# reality_add_more (ws/gRPC/xHTTP) listen on their own extra port, so the
+# probe has to address the inbound port. Same for the transport-only profile.
+if [[ "$PROFILE" == "none" ]] || { [[ "$PROFILE" == "reality" ]] && [[ "$TRANSPORT" != "reality" && "$TRANSPORT" != "auto" ]]; }; then
+    EXTRA+=(--use-inbound-port)
+fi
 docker exec "$SERVER" python3 /src/tests/e2e-diff/collect/client_config.py \
     --config /etc/idleleo/conf/xray/config.json \
     --mode "$PROFILE" \
+    --transport "$TRANSPORT" \
     --server-address "$server_ip" \
     --server-port 443 \
     --domain "$DOMAIN" \
+    ${EXTRA[@]+"${EXTRA[@]}"} \
     --output /tmp/e2e-client.json >"$OUT/client-config.log" 2>&1 || fail "client config generation failed"
 docker cp "$SERVER:/tmp/e2e-client.json" "$SECRET_DIR/client.json" >/dev/null 2>&1 || fail "cannot extract client config"
 docker exec "$SERVER" rm -f /tmp/e2e-client.json

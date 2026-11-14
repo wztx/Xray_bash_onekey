@@ -455,6 +455,238 @@ edit_job() {
     log "[$eid] done"
 }
 
+# --- ops scenarios (real execution only) -----------------------------------
+# An OPS row is only rendered PASS when both sides were observed in the same
+# container run. OPS-19 (Fail2ban) is the only one with an execution path
+# today; every other OPS row stays unproven and is reported as NOT-RUN.
+F2B_JAIL="${E2E_F2B_JAIL:-nginx-badbots}"
+F2B_BAN_IP="${E2E_F2B_BAN_IP:-203.0.113.7}"
+
+# The Nginx jails are gated on the log files existing, on both sides.
+f2b_seed_logs() {
+    docker exec "$1" bash -c \
+        'mkdir -p /usr/local/nginx/logs && touch /usr/local/nginx/logs/access.log \
+         /usr/local/nginx/logs/error.log /usr/local/nginx/logs/sni_error.log \
+         /usr/local/nginx/logs/tls_error.log'
+}
+
+# One bash-side install.sh sub-command; stdout is the observation.
+ops_bash_cli() {
+    local server=$1 out=$2 name=$3; shift 3
+    docker exec -e XRAY_VERSIONS_FILE=/etc/idleleo/versions.json "$server" \
+        bash /etc/idleleo/install.sh "$@" >"$out/$name.out" 2>&1
+    echo $? >"$out/$name.rc"
+}
+
+# One Go-side sub-command; stdout stays JSON for the verdict parser.
+ops_go_cli() {
+    local server=$1 out=$2 name=$3; shift 3
+    docker exec -e IDLELEO_ALLOW_SYSTEM_WRITES=I_ACCEPT_CONTAINER_ONLY \
+        "$server" idleleo "$@" >"$out/$name.out" 2>"$out/$name.err"
+    echo $? >"$out/$name.rc"
+}
+
+# ops19_verdict turns the two observation sets into ops.json. Missing evidence
+# is HARNESS-ERROR, an observation mismatch is BLOCKER, never PASS.
+ops19_verdict() {
+    local base=$1
+    python3 - "$base" "$F2B_JAIL" "$F2B_BAN_IP" <<'PY'
+import json, os, sys
+
+base, jail, ip = sys.argv[1], sys.argv[2], sys.argv[3]
+bash_dir, go_dir = os.path.join(base, "bash"), os.path.join(base, "go")
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def read_rc(path):
+    raw = read_text(path)
+    if raw is None:
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return None
+
+
+def read_json(path):
+    raw = read_text(path)
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def bash_jails(text):
+    for line in (text or "").splitlines():
+        idx = line.find("Jail list:")
+        if idx >= 0:
+            value = line[idx + len("Jail list:"):]
+            return [part.strip() for part in value.split(",") if part.strip()]
+    return []
+
+
+def go_jails(data):
+    return [entry.get("name") for entry in (data or {}).get("jails", []) if entry.get("name")]
+
+
+def go_banned(data):
+    out = []
+    for entry in (data or {}).get("jails", []):
+        out.extend(entry.get("bannedIPs") or [])
+    return out
+
+
+reasons = []
+bash_install_rc = read_rc(os.path.join(bash_dir, "f2b-install.rc"))
+go_install_rc = read_rc(os.path.join(go_dir, "01-install.rc"))
+bash_list_before = read_text(os.path.join(bash_dir, "04-list-before.out"))
+bash_list_after = read_text(os.path.join(bash_dir, "06-list-after.out"))
+go_status = read_json(os.path.join(go_dir, "02-status.out"))
+go_before = read_json(os.path.join(go_dir, "04-banned-before.out"))
+go_after = read_json(os.path.join(go_dir, "06-banned-after.out"))
+bash_unban_rc = read_rc(os.path.join(bash_dir, "05-unban.rc"))
+go_unban = read_json(os.path.join(go_dir, "05-unban.out"))
+
+harness = []
+if bash_install_rc is None:
+    harness.append("missing bash fail2ban install rc")
+if go_install_rc is None:
+    harness.append("missing go fail2ban install rc")
+if bash_install_rc == 124 or go_install_rc == 124:
+    harness.append("driver rc=124")
+if bash_list_before is None or bash_list_after is None:
+    harness.append("missing bash --fail2ban-list observation")
+if go_status is None or go_before is None or go_after is None:
+    harness.append("missing go fail2ban observation")
+if bash_unban_rc is None or go_unban is None:
+    harness.append("missing unban observation")
+
+b_jails, g_jails = bash_jails(bash_list_before), go_jails(go_status)
+b_before = ip in (bash_list_before or "")
+g_before = ip in go_banned(go_before)
+b_unbanned = bash_unban_rc == 0
+g_unbanned = (go_unban or {}).get("unbanned") is True
+b_after = ip in (bash_list_after or "")
+g_after = ip in go_banned(go_after)
+
+if harness:
+    verdict = "HARNESS-ERROR"
+    reasons = harness
+else:
+    if bash_install_rc != 0:
+        reasons.append("bash fail2ban install rc=%d" % bash_install_rc)
+    if go_install_rc != 0:
+        reasons.append("go fail2ban install rc=%d" % go_install_rc)
+    if jail not in b_jails:
+        reasons.append("bash jail set missing %s" % jail)
+    if jail not in g_jails:
+        reasons.append("go jail set missing %s" % jail)
+    if not b_before:
+        reasons.append("bash ban observation missing %s" % ip)
+    if not g_before:
+        reasons.append("go ban observation missing %s" % ip)
+    if not b_unbanned:
+        reasons.append("bash unban failed (rc=%s)" % bash_unban_rc)
+    if not g_unbanned:
+        reasons.append("go unban not confirmed")
+    if b_after:
+        reasons.append("bash still bans %s after unban" % ip)
+    if g_after:
+        reasons.append("go still bans %s after unban" % ip)
+    verdict = "BLOCKER" if reasons else "PASS"
+
+report = {
+    "id": "OPS-19",
+    "verdict": verdict,
+    "bothInstallRc": {"bash": bash_install_rc, "go": go_install_rc},
+    "jails": {"bash": b_jails, "go": g_jails},
+    "bannedBefore": bool(b_before and g_before),
+    "unbanned": bool(b_unbanned and g_unbanned),
+    "bannedAfter": bool(b_after or g_after),
+    "observations": {
+        "bash": {"bannedBefore": b_before, "unbanned": b_unbanned, "bannedAfter": b_after},
+        "go": {"bannedBefore": g_before, "unbanned": g_unbanned, "bannedAfter": g_after},
+    },
+    "jail": jail,
+    "banIp": ip,
+    "reasons": reasons,
+}
+with open(os.path.join(base, "ops.json"), "w", encoding="utf-8") as fh:
+    json.dump(report, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+print(verdict)
+PY
+}
+
+ops19_job() {
+    local oid=OPS-19
+    local net="e2e-$RUN_ID-$oid"
+    local base="$EVID/$oid" bdir="$EVID/$oid/bash" gdir="$EVID/$oid/go"
+    mkdir -p "$bdir" "$gdir"
+    docker network create "$net" >/dev/null 2>&1 || true
+    log "[$oid] start"
+
+    # ---- bash side ----
+    local bserver="e2e-$RUN_ID-$oid-bash"
+    if start_server "$bserver" "$oid" bash "$bdir" "$net"; then
+        # Bash only writes the Nginx jails when reality_add_nginx=on, which the
+        # reality-nginx (M2) install sets; reuse the existing round driver.
+        run_bash_round M2 "$net" "$bserver" "$bdir" 1 "" reality "" "1>1>1" "1"
+        f2b_seed_logs "$bserver"
+        docker exec -e E2E_LOG=/out/f2b-menu.log -e E2E_TIMEOUT="${E2E_TIMEOUT:-900}" \
+            -e XRAY_VERSIONS_FILE=/etc/idleleo/versions.json "$bserver" \
+            expect -f /src/tests/e2e-diff/drivers/bash_f2b.exp \
+            >"$bdir/f2b-install.out" 2>&1
+        echo $? >"$bdir/f2b-install.rc"
+        docker exec "$bserver" fail2ban-client set "$F2B_JAIL" banip "$F2B_BAN_IP" \
+            >"$bdir/03-ban.out" 2>&1
+        echo $? >"$bdir/03-ban.rc"
+        ops_bash_cli "$bserver" "$bdir" 04-list-before --fail2ban-list
+        ops_bash_cli "$bserver" "$bdir" 05-unban --fail2ban-unban "$F2B_JAIL" "$F2B_BAN_IP"
+        ops_bash_cli "$bserver" "$bdir" 06-list-after --fail2ban-list
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$bdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$bserver" >/dev/null 2>&1 || true
+
+    # ---- go side ----
+    local gserver="e2e-$RUN_ID-$oid-go"
+    if start_server "$gserver" "$oid" go "$gdir" "$net"; then
+        docker exec "$gserver" install -m 0755 /seed/idleleo /usr/local/bin/idleleo
+        f2b_seed_logs "$gserver"
+        ops_go_cli "$gserver" "$gdir" 01-install fail2ban install --container --json
+        ops_go_cli "$gserver" "$gdir" 02-status fail2ban status --json
+        docker exec "$gserver" fail2ban-client set "$F2B_JAIL" banip "$F2B_BAN_IP" \
+            >"$gdir/03-ban.out" 2>&1
+        echo $? >"$gdir/03-ban.rc"
+        ops_go_cli "$gserver" "$gdir" 04-banned-before fail2ban banned --jail "$F2B_JAIL" --json
+        ops_go_cli "$gserver" "$gdir" 05-unban fail2ban unban --jail "$F2B_JAIL" --ip "$F2B_BAN_IP" --json
+        ops_go_cli "$gserver" "$gdir" 06-banned-after fail2ban banned --jail "$F2B_JAIL" --json
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$gdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$gserver" >/dev/null 2>&1 || true
+    docker network rm "$net" >/dev/null 2>&1 || true
+
+    log "[$oid] verdict=$(ops19_verdict "$base")"
+}
+
+ops_job() {
+    case $1 in
+        OPS-19) ops19_job ;;
+        *) log "[$1] no execution path in this runner; not claiming a verdict" ;;
+    esac
+}
+
 # --- scheduler -------------------------------------------------------------
 SIDS=()
 for sid in M1 M2 M3 M4 M5 M6 M7 M8 M9 M10; do
@@ -490,6 +722,18 @@ if (( ${#EIDS[@]} > 0 )); then
         edit_job "$eid" &
     done
     wait
+fi
+
+# OPS scenarios run after E*. Only OPS-19 has a real execution path; the rest
+# are reported NOT-RUN rather than silently inheriting their declared verdict.
+OIDS=()
+if [[ -z "$ONLY" || ",$ONLY," == *",OPS-19,"* ]]; then
+    OIDS+=(OPS-19)
+fi
+if (( ${#OIDS[@]} > 0 )); then
+    for oid in "${OIDS[@]}"; do
+        ops_job "$oid"
+    done
 fi
 
 BASELINE="${E2E_BASELINE:-$SUITE/evidence/clean-run01-d5f17dc/p2}"

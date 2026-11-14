@@ -393,6 +393,57 @@ def render_baseline(evidence, baseline, matrix, entries):
     return lines
 
 
+def render_ops(evidence, matrix):
+    """OPS rows backed by a real execution record.
+
+    A row is rendered from `<evidence>/<id>/ops.json`, so PASS only ever comes
+    from two-sided observations. A row declared `must-match` without that file
+    is NOT-RUN: the declaration has no execution behind it and must never read
+    as a pass.
+    """
+    rows = []
+    for entry in matrix.get("ops", []):
+        oid = entry.get("id", "")
+        data = read_json(os.path.join(evidence, oid, "ops.json"))
+        if data is None:
+            if entry.get("verdict") == "must-match":
+                rows.append((oid, entry.get("name", ""), "-", "-", "-",
+                             "**NOT-RUN**", "未执行，不得视为通过"))
+            continue
+        rcs = data.get("bothInstallRc") or {}
+        rcs_text = "bash=%s / go=%s" % (
+            rcs.get("bash") if rcs.get("bash") is not None else "-",
+            rcs.get("go") if rcs.get("go") is not None else "-")
+        jails = data.get("jails") or {}
+
+        def jail_text(side):
+            names = jails.get(side) or []
+            return "%s: %s" % (side, ",".join(names) if names else "-")
+
+        def mark(value):
+            return "true" if value is True else ("false" if value is False else "-")
+
+        rows.append((oid, entry.get("name", ""), rcs_text,
+                     "%s ‖ %s" % (jail_text("bash"), jail_text("go")),
+                     "%s / %s" % (mark(data.get("bannedBefore")),
+                                  mark(data.get("bannedAfter"))),
+                     "**%s**" % (data.get("verdict") or "HARNESS-ERROR"),
+                     "; ".join(data.get("reasons") or [])))
+    if not rows:
+        return []
+    lines = ["## OPS 运营场景（实跑证据）", "",
+             "只有两侧观测一致才渲染 PASS；声明 `must-match` 却没有 `ops.json` 的 OPS "
+             "一律渲染为 NOT-RUN（未执行，不得视为通过）。", "",
+             "| 场景 | 两侧 install rc | jail 集合 | 封禁前 / 解封后仍封禁 | 判定 | 说明 |",
+             "|---|---|---|---|---|---|"]
+    for row in rows:
+        lines.append("| %s %s | %s | %s | %s | %s | %s |" % (
+            row[0], row[1], row[2], row[3], row[4], row[5],
+            (row[6] or "-").replace("|", "/")))
+    lines.append("")
+    return lines
+
+
 def render(evidence, matrix, entries, baseline=None):
     scenarios = matrix.get("install", [])
     lines = []
@@ -433,6 +484,7 @@ def render(evidence, matrix, entries, baseline=None):
                  "M8 仍为 HARNESS-BLOCKED；布局差异按类 ED 登记后不再计 BLOCKER，"
                  "剩余 BLOCKER 只来自未批准 ED（Go 能力缺口）。")
     lines.append("")
+    lines.extend(render_ops(evidence, matrix))
     lines.append("## 未验 / 阻塞项")
     lines.append("")
     for sid, scenario, bash, go, verdict, reasons in details:
@@ -562,6 +614,29 @@ def self_test():
         rejected.update({"status": "rejected", "decision": "fix-go"})
         text = render(tmp, matrix, [rejected])
         assert "BLOCKER(rejected)" in text, text
+        # guardrail 3: a must-match OPS row without ops.json is NOT-RUN, never a pass
+        matrix3 = dict(matrix)
+        matrix3["ops"] = [{"id": "OPS-19", "name": "Fail2ban", "verdict": "must-match"}]
+        text = render(tmp, matrix3, [])
+        assert "**NOT-RUN**" in text and "未执行，不得视为通过" in text, text
+        assert "**PASS**" not in text, text
+        dump(tmp, "OPS-19/ops.json", {
+            "id": "OPS-19", "verdict": "PASS",
+            "bothInstallRc": {"bash": 0, "go": 0},
+            "jails": {"bash": ["nginx-badbots"], "go": ["nginx-badbots"]},
+            "bannedBefore": True, "unbanned": True, "bannedAfter": False,
+            "reasons": []})
+        text = render(tmp, matrix3, [])
+        assert "**PASS**" in text and "**NOT-RUN**" not in text, text
+        # an executed failure must not be laundered into a pass either
+        dump(tmp, "OPS-19/ops.json", {
+            "id": "OPS-19", "verdict": "BLOCKER",
+            "bothInstallRc": {"bash": 0, "go": 1},
+            "jails": {"bash": ["nginx-badbots"], "go": []},
+            "bannedBefore": False, "unbanned": False, "bannedAfter": False,
+            "reasons": ["go fail2ban install rc=1"]})
+        text = render(tmp, matrix3, [])
+        assert "**BLOCKER**" in text and "go fail2ban install rc=1" in text, text
     print("self-test ok")
 
 

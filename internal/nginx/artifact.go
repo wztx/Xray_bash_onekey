@@ -103,7 +103,7 @@ func (o Options) client() *http.Client {
 	if o.Client != nil {
 		return o.Client
 	}
-	return &http.Client{Timeout: 60 * time.Second}
+	return &http.Client{Timeout: 300 * time.Second}
 }
 
 func (o Options) versionsURLs() []string {
@@ -286,7 +286,20 @@ func DownloadVerified(ctx context.Context, client *http.Client, assetURL string,
 	if err := validateHTTPS(assetURL); err != nil {
 		return nil, err
 	}
-	b, err := fetchLimited(ctx, client, assetURL, maxArtifactSize)
+	// Mirror the bash downloader's `curl --retry 2`: transient network errors
+	// are retried before giving up, otherwise a slow link fails the install.
+	var b []byte
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		b, err = fetchLimited(ctx, client, assetURL, maxArtifactSize)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil || attempt == 2 {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * time.Second)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("Nginx artifact download failed: %w", err)
 	}

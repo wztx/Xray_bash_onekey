@@ -36,6 +36,12 @@ const (
 
 	// MainConf marks the project fragment included by the managed main config.
 	MainConf = "00-xray.conf"
+	// RelayConf is the standalone relay stream fragment. It is included at the
+	// top level of the main config, not from http{}.
+	RelayConf = "relay-stream.conf"
+
+	relayMarker  = "# Xray_bash_onekey relay node (managed)"
+	relayInclude = "include /etc/idleleo/conf/nginx/" + RelayConf + ";"
 
 	MetadataSchemaVersion = 1
 )
@@ -118,6 +124,7 @@ var (
 	includeGlob = regexp.MustCompile(`^\s*include\s+/etc/idleleo/conf/nginx/\*\.conf\s*;\s*$`)
 	errorPage   = regexp.MustCompile(`^\s*error_page\b.*\b504\b`)
 	httpOpen    = regexp.MustCompile(`^\s*http\s*\{\s*$`)
+	streamOpen  = regexp.MustCompile(`^\s*stream\s*\{`)
 )
 
 // runService and queryService are seams for the service transaction. Production
@@ -203,8 +210,8 @@ func Install(ctx context.Context, spec InstallSpec) (InstallReport, error) {
 	if err != nil {
 		return InstallReport{}, err
 	}
-	if spec.Artifact.Build == "" || len(spec.Artifact.Data) == 0 {
-		return InstallReport{}, errors.New("managed Nginx install requires a resolved artifact")
+	if spec.Artifact.Build == "" {
+		return InstallReport{}, errors.New("managed Nginx install requires a resolved build")
 	}
 	installDir, err := dirAt(paths, InstallDirRel)
 	if err != nil {
@@ -244,6 +251,10 @@ func Install(ctx context.Context, spec InstallSpec) (InstallReport, error) {
 			return rep, err
 		}
 		return rep, nil
+	}
+
+	if len(spec.Artifact.Data) == 0 {
+		return rep, errors.New("managed Nginx install requires a resolved artifact")
 	}
 
 	// Snapshot the files outside the install tree that this transaction may
@@ -649,6 +660,55 @@ func containsLine(lines []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// EnsureRelayInclude adds the managed relay include to the top level of the
+// managed main config. A relay has no Xray fragments, so its stream{} block is
+// included directly (Bash parity with nginx_relay_main_conf_prepare).
+//
+// A user-owned top-level stream block is refused: the include cannot be placed
+// safely next to it and the same configuration would be ambiguous.
+func EnsureRelayInclude(root string) error {
+	paths, err := host.NewPaths(root)
+	if err != nil {
+		return err
+	}
+	installDir, err := dirAt(paths, InstallDirRel)
+	if err != nil {
+		return err
+	}
+	mainPath := filepath.Join(installDir, "conf", "nginx.conf")
+	raw, err := os.ReadFile(mainPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("managed nginx main config %s is missing", mainPath)
+		}
+		return err
+	}
+	hadTrailingNewline := strings.HasSuffix(string(raw), "\n")
+	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	out := make([]string, 0, len(lines)+3)
+	for _, line := range lines {
+		if streamOpen.MatchString(line) {
+			return fmt.Errorf("%s already contains a top-level stream block; it must be handled manually", mainPath)
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == relayMarker || trimmed == relayInclude {
+			continue
+		}
+		out = append(out, line)
+	}
+	// Drop trailing blank lines so repeated runs are byte-stable, then append
+	// the managed pair with the leading blank line Bash writes.
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	out = append(out, "", relayMarker, relayInclude)
+	joined := strings.Join(out, "\n")
+	if hadTrailingNewline {
+		joined += "\n"
+	}
+	return writeAtomic(mainPath, []byte(joined), 0o644)
 }
 
 // UnitContent renders the systemd unit; it matches the Bash unit so a Go and
@@ -1104,6 +1164,36 @@ func waitActive(ctx context.Context) string {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return queryService(ctx, "is-active", ServiceName)
+}
+
+// InstalledArtifact reports the managed Nginx build already present at root.
+// When it returns true the caller can pass the returned artifact to Install
+// without downloading anything; Install then takes its already-installed path.
+func InstalledArtifact(root string) (Artifact, bool) {
+	paths, err := host.NewPaths(root)
+	if err != nil {
+		return Artifact{}, false
+	}
+	metaPath, err := paths.Join(MetadataRel, false)
+	if err != nil {
+		return Artifact{}, false
+	}
+	b, err := os.ReadFile(metaPath)
+	if err != nil {
+		return Artifact{}, false
+	}
+	var meta Metadata
+	if err := json.Unmarshal(b, &meta); err != nil {
+		return Artifact{}, false
+	}
+	installDir, err := dirAt(paths, InstallDirRel)
+	if err != nil {
+		return Artifact{}, false
+	}
+	if _, ok := installedSameBuild(metaPath, filepath.Join(installDir, "sbin", "nginx"), meta.Build); !ok {
+		return Artifact{}, false
+	}
+	return Artifact{Build: meta.Build, Version: meta.Version}, true
 }
 
 func installedSameBuild(metaPath, binPath, build string) (Metadata, bool) {

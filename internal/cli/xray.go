@@ -394,6 +394,9 @@ func xrayUser(ctx context.Context, opts Options, cfg config, a *app.App, args []
 }
 
 func xrayInstall(ctx context.Context, opts Options, cfg config, args []string) int {
+	if strings.EqualFold(flagValue(args, "--role"), "relay") {
+		return xrayInstallRelay(ctx, opts, cfg, args)
+	}
 	binary := flagValue(args, "--binary")
 	if binary == "" {
 		return usage(opts, cfg.lang, "help")
@@ -452,6 +455,57 @@ func xrayInstall(ctx context.Context, opts Options, cfg config, args []string) i
 	if report.NginxManaged {
 		fmt.Fprintf(opts.Out, "nginx managed=%t verified=%t dir=%s\n", report.NginxManaged, report.NginxVerified, report.NginxDir)
 	}
+	for _, w := range report.Warnings {
+		fmt.Fprintf(opts.Out, "warning=%s\n", w)
+	}
+	return 0
+}
+
+// xrayInstallRelay installs a standalone relay: a managed Nginx stream{}
+// forwarder without Xray. It shares the install vocabulary but needs a target
+// instead of a runtime mode.
+func xrayInstallRelay(ctx context.Context, opts Options, cfg config, args []string) int {
+	target := flagValue(args, "--target")
+	host, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		return fail(opts, cfg, &change.UsageError{Msg: "relay --target must be host:port"})
+	}
+	backendPort, convErr := strconv.Atoi(portStr)
+	if convErr != nil {
+		return fail(opts, cfg, &change.UsageError{Msg: "relay --target must be host:port"})
+	}
+	listenPort := 443
+	if raw := flagValue(args, "--listen-port"); raw != "" {
+		v, convErr := strconv.Atoi(raw)
+		if convErr != nil {
+			return fail(opts, cfg, &change.UsageError{Msg: "--listen-port must be an integer"})
+		}
+		listenPort = v
+	}
+	listenAddress := flagValue(args, "--listen")
+	if listenAddress == "" {
+		listenAddress = "0.0.0.0"
+	}
+	report, err := deploy.InstallRelay(ctx, deploy.RelayInstallSpec{
+		Root:                 cfg.root,
+		BackendHost:          host,
+		BackendPort:          backendPort,
+		ListenPort:           listenPort,
+		ListenAddress:        listenAddress,
+		LocalIP:              flagValue(args, "--local-ip"),
+		NoService:            hasFlag(args, "--no-service"),
+		AllowContainerWrites: hasFlag(args, "--container"),
+	})
+	if err != nil {
+		return fail(opts, cfg, err)
+	}
+	cfg.json = cfg.json || hasFlag(args, "--json")
+	if cfg.json {
+		return writeJSON(opts, report)
+	}
+	fmt.Fprintf(opts.Out, "relay: listen=%s target=%s\n", report.Listen, report.Backend)
+	fmt.Fprintf(opts.Out, "config=%s\n", report.ConfigPath)
+	fmt.Fprintf(opts.Out, "nginx managed=%t verified=%t dir=%s\n", report.NginxManaged, report.NginxVerified, report.NginxDir)
 	for _, w := range report.Warnings {
 		fmt.Fprintf(opts.Out, "warning=%s\n", w)
 	}

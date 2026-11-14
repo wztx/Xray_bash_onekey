@@ -456,6 +456,16 @@ func stubManagedNginx(t *testing.T, resolveErr, installErr error) {
 		if err := os.MkdirAll(confDir, 0o755); err != nil {
 			return nginx.InstallReport{}, err
 		}
+		// The relay path patches the managed main config, so the fake install
+		// must leave one behind. Other modes ignore it.
+		mainConfDir := filepath.Join(spec.Root, "usr/local/nginx/conf")
+		if err := os.MkdirAll(mainConfDir, 0o755); err != nil {
+			return nginx.InstallReport{}, err
+		}
+		if err := os.WriteFile(filepath.Join(mainConfDir, "nginx.conf"),
+			[]byte("worker_processes 1;\nevents { worker_connections 128; }\nhttp {\n}\n"), 0o644); err != nil {
+			return nginx.InstallReport{}, err
+		}
 		return nginx.InstallReport{
 			Build: spec.Artifact.Build, ConfDir: confDir,
 			BinaryPath: filepath.Join(spec.Root, "usr/local/nginx/sbin/nginx"), Verified: true,
@@ -520,20 +530,30 @@ func TestRealityBalanceSecondaryNeedsNoNginx(t *testing.T) {
 	}
 }
 
-func TestExistingConfigIsNeverRegeneratedImplicitly(t *testing.T) {
+func TestExistingConfigIsAdoptedByDefault(t *testing.T) {
 	root := sandbox(t)
 	previous := seedReinstall(t, root)
-	_, err := Install(context.Background(), InstallSpec{
+	rep, err := Install(context.Background(), InstallSpec{
 		Root: root, SourceBinary: stubXray(t), Mode: "none", Transport: "ws", Port: 10085, NoService: true,
 	})
-	if err == nil {
-		t.Fatal("install must refuse to replace an existing runtime config without an explicit choice")
+	if err != nil {
+		t.Fatalf("existing config must be adopted by default: %v", err)
 	}
-	if !strings.Contains(err.Error(), "--keep-config") || !strings.Contains(err.Error(), "--rewrite-config") {
-		t.Fatalf("refusal must name both explicit options: %v", err)
+	if !rep.Preserved {
+		t.Fatal("adopting an existing config must be reported as preserved")
 	}
 	if got := readFile(t, filepath.Join(root, configRel)); got != previous[configRel] {
-		t.Fatalf("refused install modified the existing config: %q", got)
+		t.Fatalf("adopted install modified the existing config: %q", got)
+	}
+	found := false
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "adopted unchanged") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("adoption must be reported in the warnings: %v", rep.Warnings)
 	}
 }
 

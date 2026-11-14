@@ -169,11 +169,14 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if _, statErr := os.Lstat(configPath); statErr == nil && !spec.KeepConfig && !spec.RewriteConfig {
-		// A migration/reinstall must never regenerate an existing runtime by
-		// accident: that would change listening ports, paths, UUIDs, Reality
-		// identity and custom routing without telling the operator.
-		return Report{}, fmt.Errorf("existing runtime config %s: refusing implicit regeneration; pass --keep-config to adopt it unchanged or --rewrite-config to replace it explicitly", configPath)
+	adoptWarning := ""
+	if _, statErr := os.Lstat(configPath); statErr == nil && !spec.RewriteConfig && !spec.KeepConfig {
+		// Bash reinstall keeps the existing runtime and edits it in place. Match
+		// that default: adopt the config unchanged unless the operator
+		// explicitly asks for a rewrite. The explicit --keep-config switch
+		// remains valid and produces the same behavior.
+		spec.KeepConfig = true
+		adoptWarning = fmt.Sprintf("existing runtime config %s adopted unchanged (bash-compatible); pass --rewrite-config to replace it explicitly", configPath)
 	}
 	// Modes that expose the public entry through Nginx always get a front. The
 	// default is a managed install from the verified release artifact; the
@@ -183,6 +186,9 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		return Report{}, fmt.Errorf("mode %s needs Nginx verification: pass --nginx-bin to run nginx -t on the generated artifacts", spec.Mode)
 	}
 	rep := Report{Mode: spec.Mode, Warnings: []string{}}
+	if adoptWarning != "" {
+		rep.Warnings = append(rep.Warnings, adoptWarning)
+	}
 	var configBytes []byte
 	var generated *xraycfg.Generated
 	if spec.KeepConfig {
@@ -191,7 +197,10 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 			rep.Preserved = true
 		}
 	}
-	if len(configBytes) == 0 {
+	// Generate even when the runtime config is preserved: Nginx-front modes need
+	// fresh fragments for verification, and a preserved config must not block
+	// the reinstall (Bash rewrites its fragments on every run as well).
+	{
 		g, genErr := xraycfg.Generate(xraycfg.Spec{
 			Mode: spec.Mode, Transport: spec.Transport, Port: spec.Port,
 			Domain: spec.Domain, Target: spec.Target, Path: spec.Path,
@@ -205,9 +214,16 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		if genErr != nil {
 			return Report{}, genErr
 		}
-		configBytes = g.Config
+		if len(configBytes) == 0 {
+			configBytes = g.Config
+		}
 		generated = &g
-		rep.Mode, rep.Transport = g.Mode, g.Transport
+		if rep.Preserved {
+			// Classify the adopted runtime rather than the freshly generated one.
+			rep.Mode = ""
+		} else {
+			rep.Mode, rep.Transport = g.Mode, g.Transport
+		}
 	}
 	if rep.Mode == "" {
 		rep.Mode, rep.Transport, _ = classifyConfig(configBytes)
@@ -242,9 +258,13 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 	// Nginx tree, unit and service are real host mutations: a later failure does
 	// not unwind them, it only reports that they are installed.
 	if managedNginx {
-		artifact, resolveErr := resolveManagedNginx(ctx, nginx.Options{})
-		if resolveErr != nil {
-			return Report{}, resolveErr
+		artifact, installedOK := nginx.InstalledArtifact(paths.Root)
+		if !installedOK {
+			var resolveErr error
+			artifact, resolveErr = resolveManagedNginx(ctx, nginx.Options{})
+			if resolveErr != nil {
+				return Report{}, resolveErr
+			}
 		}
 		localIP := spec.LocalIP
 		if localIP == "" {

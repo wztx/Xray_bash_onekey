@@ -168,6 +168,8 @@ func dispatch(ctx context.Context, opts Options, cfg config, cmd string, args []
 		return changeCommand(ctx, opts, cfg, a, args)
 	case "xray":
 		return xrayCommand(ctx, opts, cfg, a, args)
+	case "fail2ban":
+		return fail2banCommand(ctx, opts, cfg, args)
 	case "bridge":
 		return bridgeCommand(ctx, opts, cfg, args)
 	case "metadata":

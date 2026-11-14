@@ -536,26 +536,6 @@
       "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
     },
     {
-      "id": "ED-002",
-      "title": "fail2ban jail.local + filter.d",
-      "layer": "L1",
-      "scenarios": [
-        "OPS-19"
-      ],
-      "paths": [
-        "/etc/fail2ban"
-      ],
-      "decision": "fix-go",
-      "rejected_reason": "Go 完全没有 fail2ban 接入，登记等于默认接受安全能力缺失。",
-      "backlog": "C1",
-      "owner": "hello-yunshu",
-      "approved_by": "release-gate",
-      "expires": "2027-03-31",
-      "status": "rejected",
-      "approval_note": "不予批准：应改 Go，转入第二梯队待办。",
-      "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
-    },
-    {
       "id": "ED-003",
       "title": "流量阻断规则",
       "layer": "L3",

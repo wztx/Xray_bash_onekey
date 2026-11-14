@@ -152,7 +152,25 @@
     keep.txt 保留）、rotate enable（真实 logrotate `--debug` rc=0，配置与 drop-in 内容符）、
     rotate disable（两个文件删除，无残留）。
   - 证据：矩阵 OPS-22 由 `go-missing` 改为 `must-match`，ED-004 从 expected_diffs 移除。
-- [ ] C1 fail2ban 接入（ED-002）。
+- [x] C1 fail2ban 接入（ED-002）。
+  - 新增 `internal/deploy/fail2ban.go` 与 `idleleo fail2ban status|install|uninstall|banned|unban|trust add|del|jail enable|disable`。
+  - jail 1:1 对齐 bash：`sshd`（maxretry 5 / bantime 604800 / backend=systemd）、`nginx-badbots`（5/604800）、
+    `nginx-botsearch`（604800）、`nginx-no-host`（5 / findtime 120 / 604800）、`nginx-tls-error`
+    （8 / findtime 300 / 43200）；全局增量封禁 `1 2 4 8 16 32 64`、上限 180d。阈值与 `ignoreip`
+    均原样继承，未放宽、未自动加白。
+  - 加固（bash 没有）：日志文件不存在的 jail 不写，只留 warning（否则 fail2ban 起不来）；`sshd` 仅在
+    ssh/sshd unit 为 active 时写；候选配置先在 `/etc/fail2ban` 副本上跑 `fail2ban-client -t`，
+    不通过则零落盘；已存在且内容不同的 jail 文件不覆盖，只 warning。
+  - 卸载：安装时记录 `/etc/idleleo/v1/fail2ban.json` manifest；卸载只删 manifest 内文件，
+    manifest 外的 `*.local` 保留并逐个提示「不是 Idleleo 创建的」；manifest 缺失（老安装）列出候选、
+    要求 `--force`，且只删已知文件名；不卸载软件包，只重启服务卸载 jail。
+  - 安装成功后打印 `SSH_CLIENT`/`SSH_CONNECTION` 来源 IP 与一行
+    `idleleo fail2ban trust add --jail sshd --ip <ip>`，**不自动执行**（避免给动态 IP 放行陌生人）。
+  - 不调包管理器（G13）：缺 `fail2ban-client` 时打印 deb/rhel/alpine 安装命令并零落盘。
+  - 验证：`go test ./internal/deploy -run Fail2ban` 全绿（8 个用例）；容器内真实 fail2ban 1.1.0 实测
+    install（4 jail + 跳过 sshd）、status、banned、unban（含二次解封 already_absent）、trust add、
+    jail disable、uninstall（保留 `user-custom.local`）。
+  - 矩阵：OPS-19 由 `go-missing` 改为 `must-match`，ED-002 从 `expected_diffs.json` 移除。
 - [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。
 - [ ] S3 证书路径/域名。
 - [ ] S4 Reality 握手参数。
@@ -162,6 +180,13 @@
 - 规则：每项单独提交；发现「照 bash 做反而降低安全性」先停并上报。
 
 ## 待办（未排期，不要在当前批次顺手改）
+
+- [ ] **ED-003 的 `paths` 标错了，做 C2 之前先修描述。** 现在写的是
+  `nftables/iptables ruleset`，但 bash 的 `scripts/traffic_blocker.sh` 实际生成的是
+  **Xray 路由规则**：`routing.rules` + `blocked` outbound，依赖 `geosite:category-ads-all`、
+  `geoip:private`、国家码、bittorrent 与 `geoip.dat`/`geosite.dat`，**没有任何 nftables/iptables 调用**。
+  不先改就会把 C2 的验收口径描错（去比内核 ruleset 而不是比 xray 配置）。改描述时同步核对
+  `docs/plans/p2/spec.md` 的 C2 段落与 OPS-21 的 layers。
 
 - [ ] **E2E 局部跑（`E2E_ONLY`）会生成一张「局部跑却覆盖全场景」的误导性 `install-matrix.md`。**
   - 现象：`E2E_ONLY="E1,E4" bash tests/e2e-diff/run_p2_matrix.sh` 只跑编辑场景，但

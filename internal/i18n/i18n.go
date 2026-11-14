@@ -46,6 +46,17 @@ var zh = map[string]string{
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
   xray logs clean|rotate enable|disable
                        截断 Xray/Nginx 日志；安装或移除 logrotate 自动轮转
+  fail2ban status      只读查看各 jail 与当前封禁数
+  fail2ban install     写入 sshd/nginx 五个 jail（不自动装包）
+  fail2ban uninstall   只删 Idleleo 按 manifest 创建的文件
+  fail2ban banned [--jail NAME]
+                       查看封禁列表
+  fail2ban unban --jail NAME --ip ADDR
+                       解封单个 IP（先校验它确实在封禁列表中）
+  fail2ban trust add|del --jail NAME --ip ADDR|CIDR
+                       增删可信 IP（运行态 + 校验后持久化）
+  fail2ban jail enable|disable --name NAME
+                       开关某个由 Idleleo 托管的 jail
   xray install --binary PATH
                        用本地二进制安装 Xray 并接管根目录
   xray uninstall|recover
@@ -113,6 +124,17 @@ Commands:
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
   xray logs clean|rotate enable|disable
                        truncate Xray/Nginx logs; install or remove logrotate rotation
+  fail2ban status      read-only jail list with current ban counts
+  fail2ban install     write the five sshd/nginx jails (never installs the package)
+  fail2ban uninstall   remove only the files Idleleo recorded in its manifest
+  fail2ban banned [--jail NAME]
+                       list banned IPs
+  fail2ban unban --jail NAME --ip ADDR
+                       unban one IP (verified against the live ban list)
+  fail2ban trust add|del --jail NAME --ip ADDR|CIDR
+                       add/remove a trusted IP (runtime + validated persistence)
+  fail2ban jail enable|disable --name NAME
+                       toggle one Idleleo-managed jail
   xray install --binary PATH
                        install Xray from a local binary and take over the root
   xray uninstall|recover

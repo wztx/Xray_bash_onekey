@@ -190,7 +190,7 @@
     {"id": "OPS-17b", "name": "更新Nginx", "bash": "5>3", "answersRef": "GLOBAL", "go": null, "verdict": "go-missing", "layers": ["L0", "L5"]},
     {"id": "OPS-17c", "name": "配置自动更新", "bash": "5>4", "answersRef": "GLOBAL", "go": ["idleleo", "schedule", "install", "--interval", "3600"], "verdict": "must-match", "layers": ["L0", "L1", "L2"]},
     {"id": "OPS-18", "name": "TCP加速", "bash": "6>1", "answersRef": "GLOBAL", "go": ["idleleo", "tcp", "status", "--json"], "verdict": "must-match", "layers": ["L0", "L3"]},
-    {"id": "OPS-19", "name": "Fail2ban", "bash": "6>2", "answersRef": "OPS_F2B", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L3"]},
+    {"id": "OPS-19", "name": "Fail2ban", "bash": "6>2", "answersRef": "OPS_F2B", "go": ["idleleo", "fail2ban", "install", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L3"]},
     {"id": "OPS-20", "name": "流量统计", "bash": "6>3", "answersRef": "OPS_STATS", "go": ["idleleo", "stats", "--json"], "verdict": "must-match", "layers": ["L0", "L5"]},
     {"id": "OPS-21", "name": "流量阻断", "bash": "6>4", "answersRef": "OPS_BLOCK", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L3"]},
     {"id": "OPS-22", "name": "清除日志", "bash": "6>5", "answersRef": "GLOBAL", "go": ["idleleo", "xray", "logs", "clean", "--yes", "--json"], "verdict": "must-match", "layers": ["L0", "L1"]},

@@ -118,6 +118,16 @@ var commandFlags = map[string]flagSpec{
 		"dry-run", "no-restart", "yes", "rewrite-config", "container", "allow-non-loopback"),
 	"xray logs clean":  specOf(nil, "yes", "container"),
 	"xray logs rotate": specOf(nil, "container"),
+
+	"fail2ban status":       specOf(nil),
+	"fail2ban install":      specOf(nil, "container", "no-nginx-no-host", "no-nginx-tls-error"),
+	"fail2ban uninstall":    specOf(nil, "container", "force"),
+	"fail2ban banned":       specOf([]string{"jail"}),
+	"fail2ban unban":        specOf([]string{"jail", "ip"}),
+	"fail2ban trust add":    specOf([]string{"jail", "ip"}, "container"),
+	"fail2ban trust del":    specOf([]string{"jail", "ip"}, "container"),
+	"fail2ban jail enable":  specOf([]string{"name"}, "container"),
+	"fail2ban jail disable": specOf([]string{"name"}, "container"),
 	"xray user add": specOf(
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "flow", "short-id", "level", "path", "fault"},
 		"container"),

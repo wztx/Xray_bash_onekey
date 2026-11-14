@@ -143,8 +143,10 @@
     `idleleo xray logs rotate enable|disable`（写入与 bash 同构的
     `etc/logrotate.d/xray_log_cleanup` + `systemd logrotate.service.d` drop-in，
     `logrotate --debug` 通过后才替换，启用 `logrotate.timer`；disable 只删自己的两个文件）。
-  - 已知偏差（已确认）：bash 会自动 `apt`/`dnf` 装 logrotate，Go 不碰系统包管理器；
-    缺二进制时在任何写入前失败并提示安装，不产生半成品。
+  - 已知偏差（已登记为主动不对齐 G12，不是 ED）：bash 会自动 `apt`/`dnf` 装 logrotate，
+    Go 不碰系统包管理器；缺二进制时在任何写入前失败，并打印 Deb/RHEL/Alpine 三条可直接
+    复制的安装命令。后果：全新系统上 `xray logs rotate enable` 需先手动装一次。详见
+    `behavior-diff.md`「主动不对齐：G12 不调用系统包管理器」。
   - 验证：单测覆盖截断范围/递归/符号链接/权限、缺二进制不落盘、`--debug` 拒绝不落盘、
     disable 不碰其他 logrotate 文件；容器内实测 clean（freedBytes=20、4 个文件归零、
     keep.txt 保留）、rotate enable（真实 logrotate `--debug` rc=0，配置与 drop-in 内容符）、
@@ -158,6 +160,25 @@
 - [ ] C5 多用户 UUID 单点修改。
 - [ ] C6 direct TLS 支持。
 - 规则：每项单独提交；发现「照 bash 做反而降低安全性」先停并上报。
+
+## 待办（未排期，不要在当前批次顺手改）
+
+- [ ] **E2E 局部跑（`E2E_ONLY`）会生成一张「局部跑却覆盖全场景」的误导性 `install-matrix.md`。**
+  - 现象：`E2E_ONLY="E1,E4" bash tests/e2e-diff/run_p2_matrix.sh` 只跑编辑场景，但
+    `compare/report.py` 仍按 `matrix.json` 的全量场景渲染矩阵；未跑的 M1–M10（以及未跑的
+    那一侧）没有证据目录，被 report.py 判为「missing evidence」→ **HARNESS-ERROR**。
+    结果矩阵里出现 10 行 HARNESS-ERROR，和「全量跑全崩」看起来完全一样。
+  - 危害：这是伪证据。后来人翻 `evidence/<run-id>/p2/install-matrix.md` 会把它当成真实
+    失败证据：轻则误判 Go/bash 回归，重则把真实回归淹没在这片噪声里，或者反过来被当成
+    「已知 HARNESS 问题」而放过。
+  - 可能修法（任选其一，倾向第一种）：
+    1. runner 把本次实跑范围写进证据目录（如 `scope.json`，列出实际执行的 `场景/侧`），
+       `report.py` 读到 scope 时**只渲染实跑过的格子**，未跑的留 `—`/`not run`，
+       不进 BLOCKER / HARNESS-ERROR 统计；无 `scope.json` 的历史证据保持现有全量语义。
+    2. 更轻的做法：`E2E_ONLY` 非空时，矩阵标题与首行显式标注 `PARTIAL RUN: E1,E4`，
+       未跑场景归入新类别 `NOT-RUN`，与 HARNESS-ERROR 分开统计。
+  - 影响面：`tests/e2e-diff/run_p2_matrix.sh`、`run_p1_smoke.sh`、`compare/report.py`
+    （`--self-test` 需补「局部跑」一例），以及历史 `evidence/*/p2/install-matrix.md` 的可读性。
 
 # Task Dependencies
 

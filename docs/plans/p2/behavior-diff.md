@@ -141,4 +141,11 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
   bash 走 M4 或 `1>1>5>1` 安装后用菜单 `2>3>1` 在 file_manager 增/列/删，
   Go 用 `xray balance add|list|remove`，两侧 `<host>.wsServers` 与
   `<host>.realityServers` 内容同形、删除后同时消失。
+- G15：`max_fails=2 fail_timeout=10` 被动摘除，OPS-32 双端 PASS
+  （`evidence/s2-failover-0503/p2/OPS-32/ops.json`）：M4 / `--mode tls --transport ws`
+  安装后两侧各起 `backend-a:9001`、`backend-b:9002` 两个真实后端，客户端经 Nginx TLS
+  打真实 `/ws` 流量；`kill -9` A 后 84 次请求全部由 B 返回、零 5xx/零连接失败，
+  每个 nginx worker 对 A 的失败尝试均止于 `max_fails=2`，随后约 12s 不再尝试
+  （`.../OPS-32/<side>/dead-attempts.txt` 为原始 error.log 行），重启 A 后重新出现 A。
+  注：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，故不存在全局统一静默窗。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

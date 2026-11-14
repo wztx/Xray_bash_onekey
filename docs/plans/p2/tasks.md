@@ -189,6 +189,10 @@
     `evidence/s2-ops-0434/p2/OPS-09/ops.json`、`.../OPS-31/ops.json`。
   - 矩阵：OPS-09 由 `go-missing` 改为 `must-match`，新增 OPS-31 `must-match`；
     ED-001 从 `expected_diffs.json` 移除。
+  - 故障摘除 OPS-32：`max_fails=2 fail_timeout=10` 被动摘除双端 PASS
+    （`evidence/s2-failover-0503/p2/OPS-32/ops.json`）：真实 TLS 流量打到
+    `backend-a:9001`/`backend-b:9002`，`kill -9` 一个后 84 次请求零 5xx、全由存活
+    后端返回；每个 worker 的失败尝试止于 `max_fails=2` 并静默约 12s，重启后重新选中。
 - [ ] S3 证书路径/域名。
 - [ ] S4 Reality 握手参数。
 - [ ] C2 流量阻断 ruleset（ED-003）。

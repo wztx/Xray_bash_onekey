@@ -202,7 +202,8 @@
     {"id": "OPS-28", "name": "卸载", "bash": "7>4", "answersRef": "OPS_UNINSTALL", "go": ["idleleo", "xray", "uninstall"], "verdict": "must-match", "layers": ["L0", "L1", "L3"]},
     {"id": "OPS-29", "name": "Rill AI 状态", "bash": "9", "answersRef": "GLOBAL", "go": ["idleleo", "rill", "status", "--json"], "verdict": "allowed-diff", "layers": ["L0", "L5"]},
     {"id": "OPS-30", "name": "修改语言", "bash": "8", "answersRef": "OPS_LANG", "go": null, "verdict": "allowed-diff", "layers": ["L0"]},
-    {"id": "OPS-31", "name": "Reality负载均衡", "bash": "2>3>1", "answersRef": "OPS_LB_REALITY", "go": ["idleleo", "xray", "balance", "list", "--upstream", "reality", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L2", "L4"]}
+    {"id": "OPS-31", "name": "Reality负载均衡", "bash": "2>3>1", "answersRef": "OPS_LB_REALITY", "go": ["idleleo", "xray", "balance", "list", "--upstream", "reality", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L2", "L4"]},
+    {"id": "OPS-32", "name": "后端故障摘除", "bash": "2>3>1", "answersRef": "OPS_LB", "go": ["idleleo", "xray", "balance", "list", "--upstream", "ws", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L2", "L4"]}
   ],
   "subscripts": [
     {"id": "S1", "script": "scripts/fail2ban_manager.sh", "trigger": "6>2", "go": null, "states": ["normal", "repeat", "failure"], "layers": ["L0", "L1", "L3"], "mirrorDeps": ["apt"]},

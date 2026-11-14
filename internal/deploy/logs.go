@@ -150,7 +150,11 @@ func EnableLogRotation(ctx context.Context, spec LogsSpec) (RotationReport, erro
 	}
 	bin, err := lookPathLogrotate()
 	if err != nil {
-		return RotationReport{}, fmt.Errorf("logrotate is not installed: install the logrotate package first (Bash installs it automatically; the Go manager never runs the OS package manager)")
+		return RotationReport{}, fmt.Errorf("logrotate is not installed; install it first, then re-run:\n" +
+			"  Debian/Ubuntu: apt-get update && apt-get install -y logrotate\n" +
+			"  RHEL/Fedora:   dnf install -y logrotate\n" +
+			"  Alpine:        apk add logrotate\n" +
+			"the Go manager never runs the OS package manager (Bash installs it automatically), so nothing was written")
 	}
 	rep := RotationReport{Warnings: []string{}}
 	// Bash enables the timer before writing the config, so a host without the

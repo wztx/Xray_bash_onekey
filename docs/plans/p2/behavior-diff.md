@@ -16,6 +16,37 @@
 | G9 | 附加传输端口 | Go 用 `base+1` 硬偏移，不探测占用、不排除 bash 保留端口 | 可改 | 生成逻辑 | 已改：ws/gRPC 10000–10999、xHTTP 11000–11999 升序候选 + bind 探测 + 保留端口排除 + `--ws-port/--grpc-port/--xhttp-port` 覆盖；65535 不回绕 |
 | G10 | TLS 回环端口 | Go TLS 模式回环 inbound 与 Nginx 共用公网端口，重启必 `EADDRINUSE` | 可改 | 生成逻辑 | 已改：回环 inbound 取传输端口池，Nginx 独占公网端口；share 仍用公网端口 |
 | G11 | 配置编辑能力 | bash 靠菜单改配置，无配置级自检、patch 语义与回滚 | 可改（Go 领先） | CLI + 生成 + 安装落地 | 已新增 `xray config edit`（规格 `interactive-config-editing-discussion.md` v1.0）：patch、自检、备份、回滚、二次确认、`--dry-run`/`--no-restart`/`--json` |
+| G12 | `xray logs rotate enable` | 缺 `logrotate` 时 bash 自动 `pkg_install` 后继续；Go 不调用系统包管理器 | 主动不对齐（已批准） | CLI 校验 + 安装落地 | 保持不自动装包：缺二进制时在任何写入前失败，并打印可直接复制的安装命令；详见下节 |
+
+## 主动不对齐：G12 不调用系统包管理器
+
+这是**主动选择不做**的对齐，不是能力缺口，因此不登记 ED。
+
+选择：`xray logs rotate enable` 在缺少 `logrotate` 时，于**任何写入前**失败（rc=1），
+并打印可直接复制的安装命令；Go 管理器永不调用 `apt`/`dnf`/`apk`。
+
+理由：
+
+- 安装器运行时会以 root 身份拉起发行版包管理器，等于把「联网 + 执行第三方包脚本」
+  这一动作塞进一个只读校验命令里；包管理器失败态（锁占用、源不可用、dpkg 中断）
+  还会把「写日志轮转配置」变成半完成状态。bash 承担这个风险是因为它整条链路都是
+  shell 命令拼装；Go 侧没有必要复制。
+- 缺少的二进制是可以被操作者一句话补上的前置条件，报错比静默装包更可预期，
+  也符合 Go 侧其他前置条件（`--binary`、`engineVersion`）的处理方式：缺就报错、不猜。
+- 单测 `TestEnableLogRotationNeedsTheBinary` 固化该行为：缺二进制时零落盘，
+  不能出现配置写了一半的中间态。
+
+后果（必须写清，避免后来人误判为 bug）：
+
+- **全新系统上 `xray logs rotate enable` 会先失败一次**，操作者装完 `logrotate`
+  重跑即可；bash 的 `6>5` 流程会自动装包、一步到位。这是唯一可感知差异。
+- 报错里已给出 Debian/Ubuntu、RHEL/Fedora、Alpine 三条命令，并说明「Bash installs it
+  automatically」，操作者不需要查文档。
+- `xray logs clean` 不受影响（截断日志不依赖 logrotate）。
+
+何时重新评估：若以后 Go 管理器引入统一的「前置依赖解析」层（例如安装流程本身就要
+校验并补齐一组宿主依赖，且已有可回滚的事务边界），可以把 logrotate 挂进那个层；
+在那之前不做单点特殊处理。
 
 ## 需拍板 / 仍保留
 
@@ -65,4 +96,7 @@
 - G9：`go test ./internal/xraycfg -run Port`；第三方占用 10000 时自动选 10001 且输出 warning；M3/M7 两侧端口行为对齐。
 - G10：`go test ./internal/xraycfg`；M4/M7 两侧 rc/L4/幂等通过，TLS 场景重启成功。
 - G11：`go test ./internal/xraycfg ./internal/deploy`；P2 E1/E2 均 PASS（`evidence/step3-edit2/p2/install-matrix.md`）。
+- G12：`go test ./internal/deploy -run LogRotation`（`TestEnableLogRotationNeedsTheBinary`
+  断言缺二进制时零落盘）；容器内实测缺 `logrotate` 时 rc=1、报错含三条安装命令、
+  `/etc/logrotate.d` 与 drop-in 均未创建。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

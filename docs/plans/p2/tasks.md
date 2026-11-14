@@ -106,8 +106,37 @@
 - [x] `behavior-diff.md` 补 G8–G11 与证据。
 - 验证：三份文档口径一致，矩阵场景与规格 §11 对应。
 
+## T13 ED 按类审批（护栏 + 批准）
+
+- [x] 113 条 M1–M10 布局差异归并为 13 类（14 个唯一路径，仅合并 conf 两路径）。
+- [x] 两条护栏：`paths` 精确匹配（不再按目录前缀吸收）+ `scenarios` 显式列举；
+  未列举路径/场景一律 BLOCKER，原 113 条 id 保留在各类 `supersedes`。
+- [x] `owner=hello-yunshu`、`approved_by=release-gate`、`expires=2027-03-31`；
+  ED 内注明「流程批准，不是双人批准」并附 review 链接。
+- [x] ED-001/002/003/004 判 `rejected`（应改 Go）并挂第二梯队；ED-005 登记。
+- [x] `report.py` 判定修正：只要存在未抑制路径即 BLOCKER，不再被部分抑制掩盖。
+- [x] release 门槛补「ED 到期复核」。
+- 验证：`report.py --self-test` 覆盖新增文件/新增场景/拒绝态三例；用
+  `final-full2-8863b10` 证据重生成矩阵，M1–M10 判定从 BLOCKER 变为类 ED，
+  未抑制差异为 0。
+
+## T14 第二梯队（顺序已拍板）
+
+- [ ] S1 target/serverNames 主动回源探测（TCP connect + 可选 TLS；失败阻断保存）。
+- [ ] C4 metadata 补版本与端口/target/serverNames 快照。
+- [ ] C3 日志轮转/清理（ED-004）。
+- [ ] C1 fail2ban 接入（ED-002）。
+- [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。
+- [ ] S3 证书路径/域名。
+- [ ] S4 Reality 握手参数。
+- [ ] C2 流量阻断 ruleset（ED-003）。
+- [ ] C5 多用户 UUID 单点修改。
+- [ ] C6 direct TLS 支持。
+- 规则：每项单独提交；发现「照 bash 做反而降低安全性」先停并上报。
+
 # Task Dependencies
 
 - T2/T3/T4 可并行，T7 依赖 T2–T6，T8 依赖 T7。
 - T5 依赖 T7 的 M4 证据，结论可能回写 spec。
 - T9–T11 按序独立验收；T12 依赖 T9–T11 完成。
+- T13 依赖 T7；T14 依赖 T13（OPS 待办来源）。

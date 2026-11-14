@@ -1,21 +1,21 @@
 # P2 install matrix — p2
 
-Generated 2026-11-15 02:15:18. Round 1 is primary; round 2 is the idempotency round.
+Generated 2026-11-15 02:47:18. Round 1 is primary; round 2 is the idempotency round.
 
 | 场景 | bash rc / L4r1 / L4r2 / rc2 / L6 | go rc / L4r1 / L4r2 / rc2 / L6 | 判定 | 说明 |
 |---|---|---|---|---|
-| M1 reality-standard | 0 / reality:ok / reality:ok / 0 / ok | 0 / reality:ok / reality:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 27 L1 paths |
-| M2 reality-nginx | 0 / reality:ok / reality:ok / 0 / ok | 0 / reality:ok / reality:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 27 L1 paths |
-| M3 reality-transport | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 27 L1 paths |
-| M4 tls-ws | 0 / ws:ok / ws:ok / 0 / ok | 0 / ws:ok / ws:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 26 L1 paths |
-| M5 tls-grpc | 0 / grpc:ok / grpc:ok / 0 / ok | 0 / grpc:ok / grpc:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 26 L1 paths |
-| M6 tls-xhttp | 0 / xhttp:ok / xhttp:ok / 0 / ok | 0 / xhttp:ok / xhttp:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 26 L1 paths |
-| M7 tls-ws-grpc-xhttp | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 26 L1 paths |
+| M1 reality-standard | 0 / reality:ok / reality:ok / 0 / ok | 0 / reality:ok / reality:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 27 L1 paths suppressed by registered ED |
+| M2 reality-nginx | 0 / reality:ok / reality:ok / 0 / ok | 0 / reality:ok / reality:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 27 L1 paths suppressed by registered ED |
+| M3 reality-transport | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 27 L1 paths suppressed by registered ED |
+| M4 tls-ws | 0 / ws:ok / ws:ok / 0 / ok | 0 / ws:ok / ws:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 26 L1 paths suppressed by registered ED |
+| M5 tls-grpc | 0 / grpc:ok / grpc:ok / 0 / ok | 0 / grpc:ok / grpc:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 26 L1 paths suppressed by registered ED |
+| M6 tls-xhttp | 0 / xhttp:ok / xhttp:ok / 0 / ok | 0 / xhttp:ok / xhttp:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 26 L1 paths suppressed by registered ED |
+| M7 tls-ws-grpc-xhttp | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 26 L1 paths suppressed by registered ED |
 | M8 tls-acme | - / - / - / - / - | - / - / - / - / - | **HARNESS-BLOCKED** | scenario ineligible: 前置：Pebble 的 HTTP-01/TLS-ALPN 在本容器网络的解析方案；方案未定前不判过，标 HARNESS-BLOCKED |
-| M9 none-ws | 0 / ws:ok / ws:ok / 0 / ok | 0 / ws:ok / ws:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 26 L1 paths |
-| M10 relay-stream | 0 / relay:ok / relay:ok / 0 / ok | 0 / relay:ok / relay:ok / 0 / ok | **BLOCKER** | ED still pending/expired for 23 L1 paths |
+| M9 none-ws | 0 / ws:ok / ws:ok / 0 / ok | 0 / ws:ok / ws:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 26 L1 paths suppressed by registered ED |
+| M10 relay-stream | 0 / relay:ok / relay:ok / 0 / ok | 0 / relay:ok / relay:ok / 0 / ok | **ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13** | 23 L1 paths suppressed by registered ED |
 
-本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；M8 仍为 HARNESS-BLOCKED；其余 BLOCKER 仅由 pending EXPECTED-DIFF 引起。
+本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；M8 仍为 HARNESS-BLOCKED；布局差异按类 ED 登记后不再计 BLOCKER，剩余 BLOCKER 只来自未批准 ED（Go 能力缺口）。
 
 ## 未验 / 阻塞项
 
@@ -23,185 +23,43 @@ Generated 2026-11-15 02:15:18. Round 1 is primary; round 2 is the idempotency ro
 
 ## L1 布局差异（未抑制）
 
-### M1（bash 有 / go 无 25；go 有 / bash 无 2）
-- bash-only roots: /etc/idleleo/cert(1), /etc/idleleo/conf(2), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8)
-  samples: /etc/idleleo/cert, /etc/idleleo/conf/install_config.json, /etc/idleleo/conf/nginx, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf
-- go-only roots: /etc/idleleo/v1(2)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json
+无。
 
-### M2（bash 有 / go 无 24；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/cert(1), /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8)
-  samples: /etc/idleleo/cert, /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
+## EXPECTED-DIFF 登记表（按类审批）
 
-### M3（bash 有 / go 无 25；go 有 / bash 无 2）
-- bash-only roots: /etc/idleleo/cert(1), /etc/idleleo/conf(2), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8)
-  samples: /etc/idleleo/cert, /etc/idleleo/conf/install_config.json, /etc/idleleo/conf/nginx, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf
-- go-only roots: /etc/idleleo/v1(2)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json
+匹配口径：`paths` 精确匹配 + `scenarios` 显式列举。新增文件或新增场景不会被已批准类别吸收，一律重新 BLOCKER。
 
-### M4（bash 有 / go 无 23；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8), /etc/idleleo/share(2)
-  samples: /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml, /etc/idleleo/install.sh
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
+| ED | 类别 | 场景数 | 层 | 路径数 | owner | approved_by | expires | supersedes | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| ED-C01 | 辅助脚本目录 | 9 | L1 | 8 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C02 | 分享信息缓存 | 9 | L1 | 3 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C03 | gettext 语言包 | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C04 | 安装日志目录 | 9 | L1 | 2 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C05 | 安装临时目录 | 9 | L1 | 2 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C06 | 统计/地理数据目录 | 9 | L1 | 2 | hello-yunshu | release-gate | 2027-03-31 | 8 | ED |
+| ED-C07 | 证书目录 | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 4 | ED |
+| ED-C08 | conf 布局 | 9 | L1 | 2 | hello-yunshu | release-gate | 2027-03-31 | 11 | ED |
+| ED-C09 | 自安装副本 | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C10 | 组件版本清单 | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C11 | 托管版本标记 | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C12 | root crontab | 9 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-C13 | Go 元数据目录 | 9 | L1 | 3 | hello-yunshu | release-gate | 2027-03-31 | 9 | ED |
+| ED-001 | Nginx 负载均衡 upstream 块 | 1 | L2 | 1 | hello-yunshu | release-gate | 2027-03-31 | 0 | BLOCKER(rejected) |
+| ED-002 | fail2ban jail.local + filter.d | 1 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 0 | BLOCKER(rejected) |
+| ED-003 | 流量阻断规则 | 1 | L3 | 1 | hello-yunshu | release-gate | 2027-03-31 | 0 | BLOCKER(rejected) |
+| ED-004 | 日志清理/轮转结果 | 1 | L1 | 1 | hello-yunshu | release-gate | 2027-03-31 | 0 | BLOCKER(rejected) |
+| ED-005 | rill agent 输出文本 | 1 | L5 | 1 | hello-yunshu | release-gate | 2027-03-31 | 0 | ED |
 
-### M5（bash 有 / go 无 23；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8), /etc/idleleo/share(2)
-  samples: /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml, /etc/idleleo/install.sh
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
+### 不予批准（转 Go 待办）
 
-### M6（bash 有 / go 无 23；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8), /etc/idleleo/share(2)
-  samples: /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml, /etc/idleleo/install.sh
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
+| ED | 待办 | 理由 |
+|---|---|---|
+| ED-001 | S2 | Go 没有负载均衡配置入口，且 reality-balance 编辑直接拒绝；这是功能空白，不是布局差异。 |
+| ED-002 | C1 | Go 完全没有 fail2ban 接入，登记等于默认接受安全能力缺失。 |
+| ED-003 | C2 | Go 无任何等价入口，用户迁移后等于丢功能。 |
+| ED-004 | C3 | 磁盘打满是运维事故，Go 无 logrotate/清理，工作量小。 |
 
-### M7（bash 有 / go 无 23；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8), /etc/idleleo/share(2)
-  samples: /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml, /etc/idleleo/install.sh
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
-
-### M9（bash 有 / go 无 24；go 有 / bash 无 2）
-- bash-only roots: /etc/idleleo/cert(1), /etc/idleleo/conf(1), /etc/idleleo/info(3), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8)
-  samples: /etc/idleleo/cert, /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/info/xray_info_clash.yaml
-- go-only roots: /etc/idleleo/v1(2)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json
-
-### M10（bash 有 / go 无 20；go 有 / bash 无 3）
-- bash-only roots: /etc/idleleo/conf(1), /etc/idleleo/info(2), /etc/idleleo/install.sh(1), /etc/idleleo/languages(1), /etc/idleleo/logs(2), /etc/idleleo/release-managed.version(1), /etc/idleleo/scripts(8), /etc/idleleo/tmp(2)
-  samples: /etc/idleleo/conf/install_config.json, /etc/idleleo/info, /etc/idleleo/info/xray_info.inf, /etc/idleleo/install.sh, /etc/idleleo/languages
-- go-only roots: /etc/idleleo/v1(3)
-  samples: /etc/idleleo/v1, /etc/idleleo/v1/metadata.json, /etc/idleleo/v1/nginx.json
-
-
-## EXPECTED-DIFF 登记表
-
-| ED | 场景 | 层 | 路径 | 状态 |
-|---|---|---|---|---|
-| ED-001 | OPS-09 | L2 | /usr/local/nginx/conf | BLOCKER(pending) |
-| ED-002 | OPS-19 | L1 | /etc/fail2ban | BLOCKER(pending) |
-| ED-003 | OPS-21 | L3 | nftables/iptables ruleset | BLOCKER(pending) |
-| ED-004 | OPS-22 | L1 | /var/log | BLOCKER(pending) |
-| ED-005 | OPS-29 | L5 | rill agent output | BLOCKER(pending) |
-| ED-006 | M1 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-007 | M1 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-008 | M1 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-009 | M1 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-010 | M1 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-011 | M1 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-012 | M1 | L1 | /etc/idleleo/cert | BLOCKER(pending) |
-| ED-013 | M1 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-014 | M1 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-015 | M1 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-016 | M1 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-017 | M1 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-018 | M1 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-019 | M1 | L1 | /etc/idleleo/conf/nginx | BLOCKER(pending) |
-| ED-020 | M2 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-021 | M2 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-022 | M2 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-023 | M2 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-024 | M2 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-025 | M2 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-026 | M2 | L1 | /etc/idleleo/cert | BLOCKER(pending) |
-| ED-027 | M2 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-028 | M2 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-029 | M2 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-030 | M2 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-031 | M2 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-032 | M2 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-033 | M3 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-034 | M3 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-035 | M3 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-036 | M3 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-037 | M3 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-038 | M3 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-039 | M3 | L1 | /etc/idleleo/cert | BLOCKER(pending) |
-| ED-040 | M3 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-041 | M3 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-042 | M3 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-043 | M3 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-044 | M3 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-045 | M3 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-046 | M3 | L1 | /etc/idleleo/conf/nginx | BLOCKER(pending) |
-| ED-047 | M4 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-048 | M4 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-049 | M4 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-050 | M4 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-051 | M4 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-052 | M4 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-053 | M4 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-054 | M4 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-055 | M4 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-056 | M4 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-057 | M4 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-058 | M4 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-059 | M5 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-060 | M5 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-061 | M5 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-062 | M5 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-063 | M5 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-064 | M5 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-065 | M5 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-066 | M5 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-067 | M5 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-068 | M5 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-069 | M5 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-070 | M5 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-071 | M6 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-072 | M6 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-073 | M6 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-074 | M6 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-075 | M6 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-076 | M6 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-077 | M6 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-078 | M6 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-079 | M6 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-080 | M6 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-081 | M6 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-082 | M6 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-083 | M7 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-084 | M7 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-085 | M7 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-086 | M7 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-087 | M7 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-088 | M7 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-089 | M7 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-090 | M7 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-091 | M7 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-092 | M7 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-093 | M7 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-094 | M7 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-095 | M9 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-096 | M9 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-097 | M9 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-098 | M9 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-099 | M9 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-100 | M9 | L1 | /etc/idleleo/share | BLOCKER(pending) |
-| ED-101 | M9 | L1 | /etc/idleleo/cert | BLOCKER(pending) |
-| ED-102 | M9 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-103 | M9 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-104 | M9 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-105 | M9 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-106 | M9 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-107 | M9 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-| ED-108 | M10 | L1 | /etc/idleleo/scripts | BLOCKER(pending) |
-| ED-109 | M10 | L1 | /etc/idleleo/info | BLOCKER(pending) |
-| ED-110 | M10 | L1 | /etc/idleleo/languages | BLOCKER(pending) |
-| ED-111 | M10 | L1 | /etc/idleleo/logs | BLOCKER(pending) |
-| ED-112 | M10 | L1 | /etc/idleleo/tmp | BLOCKER(pending) |
-| ED-113 | M10 | L1 | /etc/idleleo/conf/install_config.json | BLOCKER(pending) |
-| ED-114 | M10 | L1 | /etc/idleleo/install.sh | BLOCKER(pending) |
-| ED-115 | M10 | L1 | /etc/idleleo/versions.json | BLOCKER(pending) |
-| ED-116 | M10 | L1 | /etc/idleleo/release-managed.version | BLOCKER(pending) |
-| ED-117 | M10 | L1 | /var/spool/cron/crontabs/root | BLOCKER(pending) |
-| ED-118 | M10 | L1 | /etc/idleleo/v1 | BLOCKER(pending) |
-
-所有 ED 的 `owner` / `approved_by` / `expires` 仍为空并保留 TODO；pending/expired 继续按 BLOCKER 判定。
+批准性质：`approved_by=release-gate` 为流程批准，当前无第二维护者账号，**不是双人批准**；`expires=2027-03-31` 到期自动回落 BLOCKER，发布前须完成到期复核。
 
 ## 配置编辑场景（xray config edit，Go）
 
@@ -217,16 +75,16 @@ Generated 2026-11-15 02:15:18. Round 1 is primary; round 2 is the idempotency ro
 
 | 场景 | 基线（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | 本轮（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | 变化格子 |
 |---|---|---|---|
-| M1 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / BLOCKER | 0 / reality:ok / reality:ok / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / BLOCKER | bash.l4r2 变化 |
-| M2 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:fail / 0 / ok / BLOCKER | 0 / reality:ok / reality:ok / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / BLOCKER | bash.l4r2 变化; go.l4r2 变化 |
-| M3 | 0 / reality:ok,ws:ok / reality:fail,ws:fail / 0 / ok / 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / BLOCKER | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / BLOCKER | bash.l4r2 变化 |
-| M4 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:fail / 0 / ok / BLOCKER | 0 / ws:ok / ws:ok / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / BLOCKER | bash.l4r2 变化; go.l4r2 变化 |
-| M5 | 0 / grpc:ok / grpc:fail / 0 / ok / 0 / grpc:ok / grpc:fail / 0 / ok / BLOCKER | 0 / grpc:ok / grpc:ok / 0 / ok / 0 / grpc:ok / grpc:ok / 0 / ok / BLOCKER | bash.l4r2 变化; go.l4r2 变化 |
-| M6 | 0 / xhttp:ok / xhttp:fail / 0 / ok / 0 / xhttp:ok / xhttp:fail / 0 / ok / BLOCKER | 0 / xhttp:ok / xhttp:ok / 0 / ok / 0 / xhttp:ok / xhttp:ok / 0 / ok / BLOCKER | bash.l4r2 变化; go.l4r2 变化 |
-| M7 | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / BLOCKER | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok / 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok / BLOCKER | bash.l4r2 变化; go.l4r2 变化 |
+| M1 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / BLOCKER | 0 / reality:ok / reality:ok / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M2 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:fail / 0 / ok / BLOCKER | 0 / reality:ok / reality:ok / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; go.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M3 | 0 / reality:ok,ws:ok / reality:fail,ws:fail / 0 / ok / 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / BLOCKER | 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M4 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:fail / 0 / ok / BLOCKER | 0 / ws:ok / ws:ok / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; go.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M5 | 0 / grpc:ok / grpc:fail / 0 / ok / 0 / grpc:ok / grpc:fail / 0 / ok / BLOCKER | 0 / grpc:ok / grpc:ok / 0 / ok / 0 / grpc:ok / grpc:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; go.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M6 | 0 / xhttp:ok / xhttp:fail / 0 / ok / 0 / xhttp:ok / xhttp:fail / 0 / ok / BLOCKER | 0 / xhttp:ok / xhttp:ok / 0 / ok / 0 / xhttp:ok / xhttp:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; go.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M7 | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / BLOCKER | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok / 0 / grpc:ok,ws:ok,xhttp:ok / grpc:ok,ws:ok,xhttp:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; go.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
 | M8 | - / - / - / - / - / - / - / - / - / - / HARNESS-BLOCKED | - / - / - / - / - / - / - / - / - / - / HARNESS-BLOCKED | — |
-| M9 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / BLOCKER | 0 / ws:ok / ws:ok / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / BLOCKER | bash.l4r2 变化 |
-| M10 | 0 / relay:ok / relay:ok / 0 / ok / 0 / relay:ok / relay:ok / 0 / ok / BLOCKER | 0 / relay:ok / relay:ok / 0 / ok / 0 / relay:ok / relay:ok / 0 / ok / BLOCKER | — |
+| M9 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / BLOCKER | 0 / ws:ok / ws:ok / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | bash.l4r2 变化; 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C06,ED-C07,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
+| M10 | 0 / relay:ok / relay:ok / 0 / ok / 0 / relay:ok / relay:ok / 0 / ok / BLOCKER | 0 / relay:ok / relay:ok / 0 / ok / 0 / relay:ok / relay:ok / 0 / ok / ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 | 判定 BLOCKER→ED-C01,ED-C02,ED-C03,ED-C04,ED-C05,ED-C08,ED-C09,ED-C10,ED-C11,ED-C12,ED-C13 |
 | E1,E2 | 无 | 已执行 | E1 新增; E2 新增 |
 
 本轮预期变化：G8 → M10 文件集合；G9 → M3/M7 端口；G10 → M4/M7 重启；G11 → E1/E2 新增。

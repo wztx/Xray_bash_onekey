@@ -106,14 +106,19 @@ def diff_manifests(bash_paths, go_paths):
 
 
 def ed_suppression(diffs, scenario, layer, entries):
-    """Returns (suppressed, unsuppressed). Directory ED paths act as prefixes."""
+    """Returns (suppressed, unsuppressed).
+
+    Class-level EDs match an exact path set and an explicit scenario list:
+    a new file under an approved directory, or a new scenario, is never
+    absorbed by an existing approval.
+    """
     suppressed, unsuppressed = {}, []
-    active = [e for e in entries if e.get("scenario") == scenario and e.get("layer") == layer]
+    active = [e for e in entries
+              if e.get("layer") == layer and scenario in (e.get("scenarios") or [])]
     for path in diffs:
         hit = None
         for entry in active:
-            ep = (entry.get("path") or "").rstrip("/")
-            if ep and (path == ep or path.startswith(ep + "/")):
+            if path in (entry.get("paths") or []):
                 hit = entry
                 break
         if hit is None:
@@ -185,11 +190,13 @@ def verdict_for(scenario, bash, go, entries):
     diffs = removed + added
     if diffs:
         suppressed, unsuppressed = ed_suppression(diffs, sid, "L1", entries)
+        if unsuppressed:
+            return "BLOCKER", ["unregistered L1 layout diff (%d paths)" % len(unsuppressed)]
         blocked = [p for p, e in suppressed.items() if ed_state(e).startswith("BLOCKER")]
         if blocked:
-            return "BLOCKER", ["ED still pending/expired for %d L1 paths" % len(blocked)]
+            return "BLOCKER", ["ED not approved for %d L1 paths" % len(blocked)]
         if suppressed:
-            return "ED-" + ",".join(sorted({e["id"] for e in suppressed.values()})), \
+            return ",".join(sorted({e["id"] for e in suppressed.values()})), \
                 ["%d L1 paths suppressed by registered ED" % len(suppressed)]
         return "BLOCKER", ["unregistered L1 layout diff (%d paths)" % len(unsuppressed)]
     return "MATCH", []
@@ -419,7 +426,8 @@ def render(evidence, matrix, entries, baseline=None):
 
     lines.append("")
     lines.append("本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；"
-                 "M8 仍为 HARNESS-BLOCKED；其余 BLOCKER 仅由 pending EXPECTED-DIFF 引起。")
+                 "M8 仍为 HARNESS-BLOCKED；布局差异按类 ED 登记后不再计 BLOCKER，"
+                 "剩余 BLOCKER 只来自未批准 ED（Go 能力缺口）。")
     lines.append("")
     lines.append("## 未验 / 阻塞项")
     lines.append("")
@@ -453,17 +461,35 @@ def render(evidence, matrix, entries, baseline=None):
     if not found:
         lines.append("无。")
     lines.append("")
-    lines.append("## EXPECTED-DIFF 登记表")
+    lines.append("## EXPECTED-DIFF 登记表（按类审批）")
     lines.append("")
-    lines.append("| ED | 场景 | 层 | 路径 | 状态 |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("匹配口径：`paths` 精确匹配 + `scenarios` 显式列举。新增文件或新增场景"
+                 "不会被已批准类别吸收，一律重新 BLOCKER。")
+    lines.append("")
+    lines.append("| ED | 类别 | 场景数 | 层 | 路径数 | owner | approved_by | expires | supersedes | 状态 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
     for entry in entries:
-        lines.append("| %s | %s | %s | %s | %s |" % (
-            entry.get("id"), entry.get("scenario"), entry.get("layer"),
-            entry.get("path"), ed_state(entry)))
+        lines.append("| %s | %s | %d | %s | %d | %s | %s | %s | %d | %s |" % (
+            entry.get("id"), entry.get("title"), len(entry.get("scenarios") or []),
+            entry.get("layer"), len(entry.get("paths") or []),
+            entry.get("owner") or "-", entry.get("approved_by") or "-",
+            entry.get("expires") or "-", len(entry.get("supersedes") or []),
+            ed_state(entry)))
     lines.append("")
-    lines.append("所有 ED 的 `owner` / `approved_by` / `expires` 仍为空并保留 TODO；"
-                 "pending/expired 继续按 BLOCKER 判定。")
+    rejected = [e for e in entries if e.get("decision") == "fix-go"]
+    if rejected:
+        lines.append("### 不予批准（转 Go 待办）")
+        lines.append("")
+        lines.append("| ED | 待办 | 理由 |")
+        lines.append("|---|---|---|")
+        for entry in rejected:
+            lines.append("| %s | %s | %s |" % (
+                entry.get("id"), entry.get("backlog") or "-",
+                (entry.get("rejected_reason") or "").replace("|", "/")))
+        lines.append("")
+    lines.append("批准性质：`approved_by=release-gate` 为流程批准，当前无第二维护者账号，"
+                 "**不是双人批准**；`expires=2027-03-31` 到期自动回落 BLOCKER，"
+                 "发布前须完成到期复核。")
     lines.append("")
     lines.extend(render_edits(evidence, matrix))
     lines.extend(render_baseline(evidence, baseline, matrix, entries))
@@ -501,13 +527,37 @@ def self_test():
         EVID = tmp
         text = render(tmp, matrix, [])
         assert "**MATCH**" in text, text
-        pending = [{"id": "ED-1", "scenario": "M1", "layer": "L1",
-                    "path": "/usr/local/nginx", "status": "pending"}]
+        approved = [{"id": "ED-C01", "layer": "L1", "scenarios": ["M1"],
+                     "paths": ["/usr/local/nginx/sbin/nginx"], "status": "approved",
+                     "owner": "o", "approved_by": "release-gate", "expires": "2099-01-01"}]
         dump(tmp, "M1/bash/manifest.json",
              {"entries": [{"path": "/usr/local/nginx/sbin/nginx", "sha256": "y"},
                           {"path": "/etc/idleleo/conf/xray/config.json", "sha256": "x"}]})
-        text = render(tmp, matrix, pending)
-        assert "BLOCKER" in text, text
+        text = render(tmp, matrix, approved)
+        assert "ED-C01" in text and "**MATCH**" not in text, text
+        # guardrail 1: a new file under an approved directory must not be absorbed
+        dump(tmp, "M1/bash/manifest.json",
+             {"entries": [{"path": "/usr/local/nginx/sbin/nginx", "sha256": "y"},
+                          {"path": "/usr/local/nginx/sbin/nginx.new", "sha256": "z"},
+                          {"path": "/etc/idleleo/conf/xray/config.json", "sha256": "x"}]})
+        text = render(tmp, matrix, approved)
+        assert "unregistered L1 layout diff" in text, text
+        # guardrail 2: an approved class does not extend to a new scenario
+        matrix2 = dict(matrix)
+        matrix2["install"] = matrix["install"] + [{"id": "M11", "name": "t2", "eligible": True}]
+        for side in ("bash", "go"):
+            dump(tmp, "M11/%s/install.rc" % side, "0")
+            dump(tmp, "M11/%s/L4/ws/connectivity.json" % side, {"ok": True})
+        dump(tmp, "M11/bash/manifest.json", {"entries": [{"path": "/usr/local/nginx/sbin/nginx",
+                                                          "sha256": "y"}]})
+        dump(tmp, "M11/go/manifest.json", {"entries": []})
+        text = render(tmp, matrix2, approved)
+        assert "M11" in text and "unregistered L1 layout diff" in text, text
+        # rejected decisions stay BLOCKER even with all fields filled
+        rejected = dict(approved[0])
+        rejected.update({"status": "rejected", "decision": "fix-go"})
+        text = render(tmp, matrix, [rejected])
+        assert "BLOCKER(rejected)" in text, text
     print("self-test ok")
 
 

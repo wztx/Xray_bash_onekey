@@ -43,6 +43,49 @@ EOF
     log "injected one-shot restart failure"
 fi
 
+# E4 needs a live TLS origin on loopback so the edit-time probe can succeed
+# without external network access.
+ORIGIN_PID=""
+if [[ "$SCENARIO" == "E4" ]]; then
+    ORIGIN_DIR=/tmp/e2e-origin-tls
+    rm -rf "$ORIGIN_DIR"; mkdir -p "$ORIGIN_DIR"
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=local.test" \
+        -keyout "$ORIGIN_DIR/key.pem" -out "$ORIGIN_DIR/cert.pem" >/dev/null 2>&1
+    cat >"$ORIGIN_DIR/serve.py" <<'PY'
+import socket, ssl, sys, time
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ctx.load_cert_chain(sys.argv[1], sys.argv[2])
+srv = socket.socket()
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind(("127.0.0.1", 8443))
+srv.listen(8)
+while True:
+    conn, _ = srv.accept()
+    try:
+        tls = ctx.wrap_socket(conn, server_side=True)
+        # Reality dials the target to borrow its certificate; keep the session
+        # open long enough for that exchange to finish.
+        time.sleep(5)
+        tls.close()
+    except Exception:
+        conn.close()
+PY
+    python3 "$ORIGIN_DIR/serve.py" "$ORIGIN_DIR/cert.pem" "$ORIGIN_DIR/key.pem" >"$DIR/origin.log" 2>&1 &
+    ORIGIN_PID=$!
+    for _ in $(seq 1 20); do
+        (exec 3<>/dev/tcp/127.0.0.1/8443) 2>/dev/null && { exec 3<&- 3>&-; break; }
+        sleep 0.2
+    done
+    log "started local TLS origin pid=$ORIGIN_PID"
+fi
+
+expected_target=""
+prev=""
+for a in "$@"; do
+    [[ "$prev" == "--target" ]] && expected_target="$a"
+    prev="$a"
+done
+
 log "edit_argv=$*"
 set +e
 /usr/local/bin/idleleo xray config edit "${@:2}" >"$DIR/edit.json" 2>"$DIR/edit.err"
@@ -58,18 +101,19 @@ done
 
 sha_after=$(sha_of "$CFG")
 state=$(systemctl is-active xray 2>/dev/null || true)
-backups=$(find /etc/idleleo/backup -maxdepth 1 -type d -name 'edit-*' 2>/dev/null | wc -l | tr -d ' ')
+backups=$(find /etc/idleleo/backup -maxdepth 1 -type d -name 'edit-*' 2>/dev/null | wc -l | tr -d ' ') || true
+backups=${backups:-0}
 cp "$CFG" "$DIR/after-config.json" 2>/dev/null || true
 idleleo show --json >"$DIR/after-show.json" 2>&1 || true
 idleleo xray share --path "$CFG" --public-port 443 --json \
     >"$DIR/after-share.json" 2>&1 || true
 
-python3 - "$DIR" "$SCENARIO" "$edit_rc" "$sha_before" "$sha_after" "$state" "$backups" <<'PY'
+python3 - "$DIR" "$SCENARIO" "$edit_rc" "$sha_before" "$sha_after" "$state" "$backups" "$expected_target" <<'PY'
 import json
 import os
 import sys
 
-(directory, scenario, edit_rc, sha_before, sha_after, state, backups) = sys.argv[1:8]
+(directory, scenario, edit_rc, sha_before, sha_after, state, backups, expected_target) = sys.argv[1:9]
 edit_rc = int(edit_rc)
 backups = int(backups)
 
@@ -98,6 +142,20 @@ except Exception:
     pass
 uuids = {c.get("id") for c in clients if isinstance(c, dict)}
 after_share = read_json("after-share.json", {})
+targets = []
+try:
+    for inbound in after_cfg.get("inbounds", []):
+        target = inbound.get("streamSettings", {}).get("realitySettings", {}).get("target")
+        if target:
+            targets.append(target)
+except Exception:
+    pass
+edit_out = ""
+try:
+    with open(os.path.join(directory, "edit.json")) as fh:
+        edit_out = fh.read()
+except Exception:
+    pass
 
 checks = {
     "editRcZero": edit_rc == 0,
@@ -107,13 +165,21 @@ checks = {
     "rollbackReported": "restored" in err,
     "serviceActive": state == "active",
     "backupExists": backups > 0,
+    "noBackup": backups == 0,
     "uuidApplied": "99999999-8888-7777-6666-555555555555" in uuids,
     "shareUriUpdated": "99999999-8888-7777-6666-555555555555" in json.dumps(after_share),
+    "targetApplied": bool(expected_target) and expected_target in targets,
+    "probeReported": ('"originProbe"' in edit_out and "originProbe\": \"\"" not in edit_out)
+                     or ("origin:" in edit_out and "ok" in edit_out),
+    "probeRefused": edit_rc == 2 and "origin unreachable" in err
+                     and bool(sha_before) and sha_before == sha_after and backups == 0,
 }
 
 wanted = {
     "E1": ["editRcZero", "configChanged", "uuidApplied", "shareUriUpdated", "serviceActive", "backupExists"],
     "E2": ["editRcNonZero", "rollbackReported", "configRestored", "serviceActive"],
+    "E3": ["probeRefused", "configRestored", "serviceActive", "noBackup"],
+    "E4": ["editRcZero", "configChanged", "targetApplied", "probeReported", "serviceActive"],
 }.get(scenario, [])
 
 result = {
@@ -132,4 +198,10 @@ with open(os.path.join(directory, "checks.json"), "w") as fh:
 print(json.dumps(result, sort_keys=True))
 PY
 
+# The local TLS origin must outlive the edit: Reality's fallback keeps using
+# the new target during the post-edit L4 check, so it is only removed with the
+# container.
+if [[ -n "$ORIGIN_PID" ]]; then
+    log "local TLS origin left running (pid $ORIGIN_PID)"
+fi
 exit 0

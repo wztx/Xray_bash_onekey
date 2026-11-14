@@ -123,6 +123,12 @@
 ## T14 第二梯队（顺序已拍板）
 
 - [ ] S1 target/serverNames 主动回源探测（TCP connect + 可选 TLS；失败阻断保存）。
+  - 代码与单测完成：`internal/deploy/probe.go`、`probe_test.go`；E3（拒连目标）通过，
+    rc=2、SHA 不变、无备份、服务 active。
+  - **E4（可达目标）未收口**：本地自签 TLS 回源能通过探测并落盘，但改后 Reality L4
+    失败（curl 56）。说明「TCP+不校验证书」挡不住会断线的 target；已上报待拍板
+    （三条选项：保持现状并去掉 E4 的 L4 断言 / 探测改为校验证书链+hostname /
+    E4 改用第二个公网真实回源）。
 - [ ] C4 metadata 补版本与端口/target/serverNames 快照。
 - [ ] C3 日志轮转/清理（ED-004）。
 - [ ] C1 fail2ban 接入（ED-002）。

@@ -124,16 +124,19 @@ relay 分支的任何改动均视为断线。
 1. 获取更新锁（dry-run 不加锁）。
 2. 解析 config 路径，读取并判定安装类型（`editBase`）。
 3. patch → 候选配置（内存）。
-4. dry-run / 无变化：直接返回报告。
-5. 候选写入同目录临时文件 `.edit-candidate-*.json`（0600），执行
+4. 变更涉及 `--target` / `--server-names` 时探测有效回源：TCP connect 必做，
+   目标端口为 443/8443 且已知 serverNames 时再做 TLS 握手（不校验证书链，只验证
+   可握手）。失败返回 `origin unreachable`，rc=2、零落盘；dry-run 同样探测。
+5. dry-run / 无变化：直接返回报告。
+6. 候选写入同目录临时文件 `.edit-candidate-*.json`（0600），执行
    `xray -test -config <tmp>`；失败则删除临时文件并返回错误，**现网零改动**。
-6. 写备份目录（§7.3）。
-7. 快照 config（内容、mode、uid/gid）与 Nginx 目录常规文件。
-8. Nginx 场景：写 fragments → `nginx.Finalize{NoService:true}`（权限 + `nginx -t`）。
-9. 原子写 config，保留 mode/uid/gid。
-10. 默认 `systemctl restart xray` 并等待 active；`--no-restart` 跳过。
-11. 默认再执行 `nginx.Finalize` 完成重载；`--no-restart` 时只校验不重载。
-12. 成功：更新管理元数据（transport、runtime sha256、TLS 标记、updatedAt）、
+7. 写备份目录（§7.3）。
+8. 快照 config（内容、mode、uid/gid）与 Nginx 目录常规文件。
+9. Nginx 场景：写 fragments → `nginx.Finalize{NoService:true}`（权限 + `nginx -t`）。
+10. 原子写 config，保留 mode/uid/gid。
+11. 默认 `systemctl restart xray` 并等待 active；`--no-restart` 跳过。
+12. 默认再执行 `nginx.Finalize` 完成重载；`--no-restart` 时只校验不重载。
+13. 成功：更新管理元数据（transport、runtime sha256、TLS 标记、updatedAt）、
     裁剪旧备份、输出 backup 与新 share URI。
 
 ### 7.2 端口探测例外
@@ -240,8 +243,10 @@ E1/E2 的 L4 改前/改后均 ok；报告新增“配置编辑场景（xray conf
 1. Reality 握手参数（publicKey / shortId / fingerprint / spiderX）。
 2. Nginx `serverNames`、负载均衡后端增删。
 3. 证书路径/域名（不含自动签发）。
-4. target / serverNames 改动后的**主动回源探测**：当前只有 `xray -test` 与重启健康检查，
-   回源不可达不会自动回滚，需要人工看日志或备份恢复。
+
+已实现（2026-11-15，第二梯队 S1）：target / serverNames 改动后的**主动回源探测**。
+编辑时先做 TCP connect（目标端口 443/8443 且有 serverNames 时再做 TLS 握手），
+不可达直接拒绝保存（rc=2、零落盘），不再依赖事后看日志或备份恢复。
 
 第三梯队（未实现）：TLS 版本、SNI Guard、证书自动更新开关、流量统计开关。
 

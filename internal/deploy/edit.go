@@ -50,6 +50,8 @@ type EditReport struct {
 	NginxUpdated  bool     `json:"nginxUpdated"`
 	NginxVerified bool     `json:"nginxVerified"`
 	ShareURI      string   `json:"shareUri,omitempty"`
+	OriginTarget  string   `json:"originTarget,omitempty"`
+	OriginProbe   string   `json:"originProbe,omitempty"`
 	Disconnect    bool     `json:"disconnect"`
 	Warnings      []string `json:"warnings"`
 }
@@ -129,10 +131,14 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		NoChanges: res.NoChanges, NoRestart: spec.NoRestart, DryRun: spec.DryRun,
 		Disconnect: res.Disconnect, ShareURI: g.ShareURI,
 	}
-	if res.NoChanges || spec.DryRun {
-		if !res.NoChanges {
-			report.NewSHA256 = store.HashBytes(g.Config)
-		}
+	if res.NoChanges {
+		return report, nil
+	}
+	report.NewSHA256 = store.HashBytes(g.Config)
+	if err := probeOriginIfRequested(ctx, spec.Request, res, &report); err != nil {
+		return report, err
+	}
+	if spec.DryRun {
 		return report, nil
 	}
 

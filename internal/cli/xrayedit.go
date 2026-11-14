@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +12,15 @@ import (
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/deploy"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
 )
+
+// editFail keeps an unreachable Reality origin in the "refused, nothing
+// written" class (exit 2) instead of a generic execution failure.
+func editFail(opts Options, cfg config, err error) int {
+	if errors.Is(err, deploy.ErrOriginUnreachable) {
+		return fail(opts, cfg, &change.UsageError{Msg: err.Error()})
+	}
+	return fail(opts, cfg, err)
+}
 
 // xrayConfig owns `xray config ...`. Editing is a patch, not a rewrite: the
 // generator keeps every value the operator did not name.
@@ -45,7 +55,7 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 	}
 	preview, err := deploy.EditConfig(ctx, spec)
 	if err != nil {
-		return fail(opts, cfg, err)
+		return editFail(opts, cfg, err)
 	}
 	cfg.json = cfg.json || hasFlag(args, "--json")
 	if preview.NoChanges {
@@ -78,7 +88,7 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 	spec.DryRun = false
 	report, err := deploy.EditConfig(ctx, spec)
 	if err != nil {
-		return fail(opts, cfg, err)
+		return editFail(opts, cfg, err)
 	}
 	if cfg.json {
 		return writeJSON(opts, report)
@@ -228,6 +238,9 @@ func printEditPreview(opts Options, preview deploy.EditReport) {
 		fmt.Fprintf(opts.Out, "diff=%s\n", d)
 	}
 	fmt.Fprintf(opts.Out, "config: %s sha256=%s -> %s\n", preview.ConfigPath, preview.OldSHA256, preview.NewSHA256)
+	if preview.OriginProbe != "" {
+		fmt.Fprintf(opts.Out, "origin: %s ok\n", preview.OriginProbe)
+	}
 	fmt.Fprintln(opts.Out, "dry-run: nothing was written")
 }
 
@@ -238,6 +251,9 @@ func printEditReport(opts Options, report deploy.EditReport) {
 		fmt.Fprintf(opts.Out, "diff=%s\n", d)
 	}
 	fmt.Fprintf(opts.Out, "config: %s sha256=%s\n", report.ConfigPath, report.NewSHA256)
+	if report.OriginProbe != "" {
+		fmt.Fprintf(opts.Out, "origin: %s ok\n", report.OriginProbe)
+	}
 	if report.NginxUpdated {
 		fmt.Fprintf(opts.Out, "nginx: updated verified=%t\n", report.NginxVerified)
 	}

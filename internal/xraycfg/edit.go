@@ -46,8 +46,12 @@ type EditResult struct {
 	Port       int
 	PublicPort int
 	Listen     string
-	Disconnect bool
-	NoChanges  bool
+	// Target and ServerNames are the effective Reality values after the patch,
+	// used by the edit path to probe the origin before saving.
+	Target      string
+	ServerNames []string
+	Disconnect  bool
+	NoChanges   bool
 	// Diff lists the changed runtime paths, so --dry-run and the confirmation
 	// prompt can show exactly what would move.
 	Diff []string
@@ -96,15 +100,17 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 		}
 	}
 	res := EditResult{
-		Changed:    changed,
-		Mode:       spec.Mode,
-		Transport:  spec.Transport,
-		Port:       spec.Port,
-		PublicPort: spec.PublicPort,
-		Listen:     spec.Listen,
-		Disconnect: disconnectProne(changed),
-		NoChanges:  len(changed) == 0 || len(diffs) == 0,
-		Diff:       diffs,
+		Changed:     changed,
+		Mode:        spec.Mode,
+		Transport:   spec.Transport,
+		Port:        spec.Port,
+		PublicPort:  spec.PublicPort,
+		Listen:      spec.Listen,
+		Target:      spec.Target,
+		ServerNames: append([]string(nil), spec.ServerNames...),
+		Disconnect:  disconnectProne(changed),
+		NoChanges:   len(changed) == 0 || len(diffs) == 0,
+		Diff:        diffs,
 	}
 	return g, res, nil
 }

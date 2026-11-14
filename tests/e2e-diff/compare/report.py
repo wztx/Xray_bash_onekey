@@ -237,6 +237,10 @@ def render_edits(evidence, matrix):
             notes.append("改后/回滚后 L4 未通过")
         if eid == "E2" and got.get("configRestored") is True:
             notes.append("回滚后 SHA 还原")
+        if eid == "E3" and got.get("probeRefused") is True:
+            notes.append("回源不可达被拒绝，零落盘")
+        if eid == "E4" and got.get("probeReported") is True:
+            notes.append("回源探测通过后落盘")
         detail = ", ".join("%s:%s" % (name, mark(got.get(name))) for name in wanted) or "-"
         lines.append("| %s %s | %s | %s → %s | %s | %s / %s | **%s** | %s |" % (
             eid, entry.get("name", ""), checks.get("editRc", "-"),

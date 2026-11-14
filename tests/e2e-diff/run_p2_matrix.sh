@@ -475,7 +475,7 @@ done
 # Config-edit scenarios are Go-only and run after the install matrix; they
 # reuse a real M1 install from the same runner build.
 EIDS=()
-for eid in E1 E2; do
+for eid in E1 E2 E3 E4; do
     if [[ -n "$ONLY" ]]; then
         case ",$ONLY," in *,$eid,*) ;; *) continue ;; esac
     fi

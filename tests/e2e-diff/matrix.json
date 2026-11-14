@@ -234,6 +234,30 @@
       "checks": ["editRcNonZero", "rollbackReported", "configRestored", "serviceActive"],
       "l4": "reality",
       "notes": "drop-in 只在首次 ExecStartPre 失败，回滚重启可成功，用于验证真回滚而非永久坏服务。"
+    },
+    {
+      "id": "E3",
+      "name": "config-edit-target-probe-refused",
+      "base": "M1",
+      "method": "M1 安装 -> config edit --target 127.0.0.1:1（拒连端口）-> 期望 rc=2、配置 SHA 不变、无备份、服务 active、L4 仍通",
+      "go": {
+        "argv": ["idleleo", "xray", "config", "edit", "--target", "127.0.0.1:1", "--container", "--json"]
+      },
+      "checks": ["probeRefused", "configRestored", "serviceActive", "noBackup"],
+      "l4": "reality",
+      "notes": "回源探测失败必须阻断保存（rc=2、零落盘），不允许把断线配置写进现网。"
+    },
+    {
+      "id": "E4",
+      "name": "config-edit-target-probe-ok",
+      "base": "M1",
+      "method": "M1 安装 -> 驱动内起本地 TLS 回源 :8443（CN=local.test）-> config edit --target 127.0.0.1:8443 --server-names local.test -> 期望 rc=0、target 落盘、探测记录、服务 active、L4 仍通（客户端 SNI 随 serverNames 变为 local.test）",
+      "go": {
+        "argv": ["idleleo", "xray", "config", "edit", "--target", "127.0.0.1:8443", "--server-names", "local.test", "--container", "--json"]
+      },
+      "checks": ["editRcZero", "configChanged", "targetApplied", "probeReported", "serviceActive"],
+      "l4": "reality",
+      "notes": "E2E 用本地 TLS listener 代替外网回源，不给生产加 --skip-probe 后门。"
     }
   ],
   "upgrade": {

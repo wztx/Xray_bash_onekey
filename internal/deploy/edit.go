@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/nginx"
+	"github.com/hello-yunshu/Xray_bash_onekey/internal/schedule"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/store"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
 )
@@ -30,6 +32,7 @@ type EditSpec struct {
 	ConfigPath           string
 	Request              xraycfg.EditRequest
 	NoRestart            bool
+	NoProbe              bool
 	DryRun               bool
 	AllowContainerWrites bool
 }
@@ -46,14 +49,28 @@ type EditReport struct {
 	BackupDir     string   `json:"backupDir,omitempty"`
 	NoChanges     bool     `json:"noChanges"`
 	NoRestart     bool     `json:"noRestart"`
+	NoProbe       bool     `json:"noProbe,omitempty"`
 	DryRun        bool     `json:"dryRun"`
 	NginxUpdated  bool     `json:"nginxUpdated"`
 	NginxVerified bool     `json:"nginxVerified"`
 	ShareURI      string   `json:"shareUri,omitempty"`
 	OriginTarget  string   `json:"originTarget,omitempty"`
 	OriginProbe   string   `json:"originProbe,omitempty"`
-	Disconnect    bool     `json:"disconnect"`
-	Warnings      []string `json:"warnings"`
+	Domain        string   `json:"domain,omitempty"`
+	CertFile      string   `json:"certFile,omitempty"`
+	CertKeyFile   string   `json:"certKeyFile,omitempty"`
+	CertNotAfter  string   `json:"certNotAfter,omitempty"`
+	CertSANs      []string `json:"certSans,omitempty"`
+	TLSProbe      string   `json:"tlsProbe,omitempty"`
+	TLSServerName string   `json:"tlsServerName,omitempty"`
+	TLSVersion    string   `json:"tlsVersion,omitempty"`
+	TLSTrusted    bool     `json:"tlsSystemTrusted"`
+	// ScheduleUpdated records whether the cert-renew target in jobs.json was
+	// moved with the edit; no re-issue ever happens here.
+	ScheduleUpdated bool     `json:"scheduleUpdated,omitempty"`
+	SchedulePath    string   `json:"schedulePath,omitempty"`
+	Disconnect      bool     `json:"disconnect"`
+	Warnings        []string `json:"warnings"`
 }
 
 // RelayEditSpec is one `xray config edit` request against a managed relay.
@@ -113,6 +130,9 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	if err != nil {
 		return EditReport{}, err
 	}
+	if err := requireNativeInstall(paths); err != nil {
+		return EditReport{}, err
+	}
 	raw, _, err := store.ReadRegular(configPath, "runtime config")
 	if err != nil {
 		return EditReport{}, err
@@ -128,8 +148,9 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	report := EditReport{
 		Mode: res.Mode, Transport: res.Transport, Changed: res.Changed, Diff: res.Diff,
 		ConfigPath: configPath, OldSHA256: store.HashBytes(raw),
-		NoChanges: res.NoChanges, NoRestart: spec.NoRestart, DryRun: spec.DryRun,
+		NoChanges: res.NoChanges, NoRestart: spec.NoRestart, NoProbe: spec.NoProbe, DryRun: spec.DryRun,
 		Disconnect: res.Disconnect, ShareURI: g.ShareURI,
+		Domain: res.Domain, CertFile: res.CertFile, CertKeyFile: res.KeyFile,
 	}
 	if res.NoChanges {
 		return report, nil
@@ -138,7 +159,26 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	if err := probeOriginIfRequested(ctx, spec.Request, res, &report); err != nil {
 		return report, err
 	}
+
+	// The TLS domain and certificate pair own no runtime field but do own the
+	// front. Validate the pair against the domain before anything is written:
+	// a mismatch would otherwise only surface as failed handshakes.
+	tlsTouched := res.Mode == xraycfg.ModeTLS && touchedTLS(res.Changed)
+	var pair tlsPairInfo
+	if tlsTouched {
+		info, warns, err := inspectTLSPair(res.Domain, res.CertFile, res.KeyFile)
+		if err != nil {
+			return report, err
+		}
+		pair = info
+		report.CertNotAfter = info.NotAfter.UTC().Format(time.RFC3339)
+		report.CertSANs = info.SANs
+		report.Warnings = append(report.Warnings, warns...)
+	}
 	if spec.DryRun {
+		if tlsTouched {
+			report.TLSProbe = "skipped: dry-run"
+		}
 		return report, nil
 	}
 
@@ -167,7 +207,20 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		return report, fmt.Errorf("%w; configuration was not changed", err)
 	}
 
-	backupDir, err := writeEditBackup(paths, configPath, raw, nginxDir, res)
+	// A front-owned edit leaves the runtime JSON byte-identical. Restarting
+	// Xray then would only drop live sessions for no reason.
+	runtimeChanged := !bytes.Equal(raw, g.Config)
+	schedulePath := ""
+	if tlsTouched {
+		if p, joinErr := paths.Join(schedule.ConfigRel, false); joinErr == nil {
+			schedulePath = p
+		}
+	}
+	extras := editBackupExtras{CertFile: res.CertFile, KeyFile: res.KeyFile, ScheduleFile: schedulePath}
+	if !tlsTouched {
+		extras = editBackupExtras{}
+	}
+	backupDir, err := writeEditBackup(paths, configPath, raw, nginxDir, res, extras)
 	if err != nil {
 		return report, err
 	}
@@ -177,6 +230,14 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	if err != nil {
 		return report, err
 	}
+	var scheduleState *fileState
+	if schedulePath != "" {
+		st, err := captureFile(schedulePath)
+		if err != nil {
+			return report, err
+		}
+		scheduleState = &st
+	}
 	nginxSnap := []fileState{}
 	if nginxDir != "" {
 		nginxSnap, err = snapshotRegularFiles(nginxDir)
@@ -185,7 +246,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		}
 	}
 	fail := func(cause error) (EditReport, error) {
-		restoreErr := restoreEditState(ctx, spec, configState, nginxSnap, nginxDir)
+		restoreErr := restoreEditState(ctx, spec, configState, nginxSnap, nginxDir, scheduleState, runtimeChanged)
 		if restoreErr != nil {
 			return report, fmt.Errorf("%w; rollback failed: %v", cause, restoreErr)
 		}
@@ -205,25 +266,53 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		report.NginxUpdated = true
 		report.NginxVerified = true
 	}
-	if err := writeFileAtomic(configPath, g.Config, configState.mode); err != nil {
-		return fail(err)
-	}
-	if configState.uid >= 0 && configState.gid >= 0 {
-		if err := chownFile(configPath, configState.uid, configState.gid); err != nil {
+	if runtimeChanged {
+		if err := writeFileAtomic(configPath, g.Config, configState.mode); err != nil {
 			return fail(err)
 		}
-	}
-	if !spec.NoRestart {
-		if err := service(ctx, "restart", "xray"); err != nil {
-			return fail(err)
+		if configState.uid >= 0 && configState.gid >= 0 {
+			if err := chownFile(configPath, configState.uid, configState.gid); err != nil {
+				return fail(err)
+			}
 		}
-		if state := waitActive(ctx); state != "active" {
-			return fail(fmt.Errorf("xray did not become active after the edit (state %s)", state))
+		if !spec.NoRestart {
+			if err := service(ctx, "restart", "xray"); err != nil {
+				return fail(err)
+			}
+			if state := waitActive(ctx); state != "active" {
+				return fail(fmt.Errorf("xray did not become active after the edit (state %s)", state))
+			}
 		}
 	}
 	if nginxDir != "" && !spec.NoRestart {
 		if err := nginx.Finalize(ctx, nginx.FinalizeSpec{Root: spec.Root}); err != nil {
 			return fail(err)
+		}
+	}
+	if tlsTouched {
+		if schedulePath == "" {
+			report.Warnings = append(report.Warnings,
+				"no schedule config found; certificate renewal will keep using the old target until a schedule is installed")
+		} else {
+			updated, warns, err := schedule.SetCertTarget(spec.Root, res.Domain, res.CertFile, res.KeyFile)
+			if err != nil {
+				return fail(err)
+			}
+			report.ScheduleUpdated = updated
+			report.SchedulePath = schedulePath
+			report.Warnings = append(report.Warnings, warns...)
+		}
+		switch {
+		case spec.NoProbe:
+			report.TLSProbe = "skipped: --no-probe"
+		case spec.NoRestart:
+			report.TLSProbe = "skipped: --no-restart"
+		case nginxDir == "":
+			report.TLSProbe = "skipped: no managed front"
+		default:
+			if err := probeLocalTLS(ctx, &report, probeAddress(res.PublicPort), res.Domain, pair.LeafDER); err != nil {
+				return fail(err)
+			}
 		}
 	}
 	report.NewSHA256 = store.HashBytes(g.Config)
@@ -232,16 +321,49 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	return report, nil
 }
 
-// restoreEditState puts the config and Nginx tree back and brings the old
-// configuration back into service.
-func restoreEditState(ctx context.Context, spec EditSpec, config fileState, nginxSnap []fileState, nginxDir string) error {
+// touchedTLS reports whether the patch moved a value only the front owns.
+func touchedTLS(changed []string) bool {
+	for _, field := range changed {
+		switch field {
+		case "domain", "cert-file", "cert-key-file":
+			return true
+		}
+	}
+	return false
+}
+
+// requireNativeInstall refuses a root the Bash manager still owns. Editing
+// only the Go view would let the two managers diverge silently while this
+// command reports success, which is worse than refusing.
+func requireNativeInstall(paths host.Paths) error {
+	if _, err := os.Stat(filepath.Join(paths.Root, paths.LegacyConfig())); err == nil {
+		return fmt.Errorf("this root is managed by the Bash installer (%s); refusing to edit only the Go copy", paths.LegacyConfig())
+	}
+	meta, _, err := store.LoadMetadata(paths)
+	if err != nil {
+		return fmt.Errorf("manager metadata is required before editing: %w", err)
+	}
+	if meta.Provenance != "" && meta.Provenance != "native" {
+		return fmt.Errorf("this root was imported from Bash (provenance %q); refusing to edit only one manager's view", meta.Provenance)
+	}
+	return nil
+}
+
+// restoreEditState puts the config, schedule target and Nginx tree back and
+// brings the old configuration back into service.
+func restoreEditState(ctx context.Context, spec EditSpec, config fileState, nginxSnap []fileState, nginxDir string, scheduleState *fileState, runtimeChanged bool) error {
 	restoreErr := config.restore()
+	if scheduleState != nil {
+		if err := scheduleState.restore(); err != nil {
+			restoreErr = joinRollbackErr(restoreErr, "schedule restore", err)
+		}
+	}
 	if nginxDir != "" {
 		if err := restoreRegularFiles(nginxDir, nginxSnap); err != nil {
 			restoreErr = joinRollbackErr(restoreErr, "nginx restore", err)
 		}
 	}
-	if !spec.NoRestart {
+	if !spec.NoRestart && runtimeChanged {
 		if err := service(ctx, "restart", "xray"); err != nil {
 			restoreErr = joinRollbackErr(restoreErr, "xray restart", err)
 		}
@@ -301,8 +423,10 @@ func editBase(paths host.Paths, raw []byte) (xraycfg.EditDefaults, string, error
 			// the same Nginx tree, so a single local backend is the plain front.
 			return xraycfg.EditDefaults{Mode: xraycfg.ModeRealityNginx, PublicPort: listenPort(conf, 443)}, dir, nil
 		}
+		certFile, keyFile := tlsPaths(conf)
 		return xraycfg.EditDefaults{
 			Mode: xraycfg.ModeTLS, PublicPort: listenPort(conf, 443), Domain: serverName(conf),
+			CertFile: certFile, KeyFile: keyFile,
 		}, dir, nil
 	} else if !os.IsNotExist(readErr) {
 		return xraycfg.EditDefaults{}, "", readErr
@@ -317,7 +441,24 @@ func editBase(paths host.Paths, raw []byte) (xraycfg.EditDefaults, string, error
 	}
 }
 
-var serverNameRe = regexp.MustCompile(`(?m)^\s*server_name\s+([^;]+);`)
+var (
+	serverNameRe = regexp.MustCompile(`(?m)^\s*server_name\s+([^;]+);`)
+	tlsCertRe    = regexp.MustCompile(`(?m)^\s*ssl_certificate\s+([^;]+);`)
+	tlsKeyRe     = regexp.MustCompile(`(?m)^\s*ssl_certificate_key\s+([^;]+);`)
+)
+
+// tlsPaths reads the pair the live TLS front serves. An edit compares against
+// these values, so a no-op request does not silently rewrite Nginx.
+func tlsPaths(conf string) (string, string) {
+	cert, key := "", ""
+	if m := tlsCertRe.FindStringSubmatch(conf); len(m) > 1 {
+		cert = strings.TrimSpace(m[1])
+	}
+	if m := tlsKeyRe.FindStringSubmatch(conf); len(m) > 1 {
+		key = strings.TrimSpace(m[1])
+	}
+	return cert, key
+}
 
 // listenPort reads the first listen port from an Nginx fragment. Splitting the
 // directive keeps bare ports ("listen 443 reuseport") and sockaddrs
@@ -429,9 +570,17 @@ func restoreRegularFiles(dir string, snap []fileState) error {
 	return nil
 }
 
+// editBackupExtras are the files a front-owned TLS edit references and a
+// manual rollback may need: the previous pair and the renewal target.
+type editBackupExtras struct {
+	CertFile     string
+	KeyFile      string
+	ScheduleFile string
+}
+
 // writeEditBackup copies everything this edit may replace into an
 // operator-visible directory so a manual recovery never depends on the tool.
-func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir string, res xraycfg.EditResult) (string, error) {
+func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir string, res xraycfg.EditResult, extras editBackupExtras) (string, error) {
 	base, err := joinDir(paths, editBackupRel)
 	if err != nil {
 		return "", err
@@ -442,6 +591,36 @@ func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir s
 		return "", err
 	}
 	if err := writeFileAtomic(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
+		return "", err
+	}
+	// backfill copies one referenced file; a missing source is not an error
+	// because the certificate may have been rotated away between probes.
+	backfill := func(src, name string) (bool, error) {
+		if src == "" {
+			return false, nil
+		}
+		b, err := os.ReadFile(src)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if err := writeFileAtomic(filepath.Join(dir, name), b, 0o600); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	certSaved, err := backfill(extras.CertFile, "tls-cert.pem")
+	if err != nil {
+		return "", err
+	}
+	keySaved, err := backfill(extras.KeyFile, "tls-key.pem")
+	if err != nil {
+		return "", err
+	}
+	scheduleSaved, err := backfill(extras.ScheduleFile, "schedule-jobs.json")
+	if err != nil {
 		return "", err
 	}
 	if nginxDir != "" {
@@ -463,10 +642,17 @@ func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir s
 		}
 	}
 	manifest, _ := json.MarshalIndent(map[string]any{
-		"configPath": configPath,
-		"changed":    res.Changed,
-		"diff":       res.Diff,
-		"createdAt":  time.Now().UTC().Format(time.RFC3339),
+		"configPath":    configPath,
+		"changed":       res.Changed,
+		"diff":          res.Diff,
+		"createdAt":     time.Now().UTC().Format(time.RFC3339),
+		"tlsDomain":     res.Domain,
+		"tlsCertFile":   extras.CertFile,
+		"tlsKeyFile":    extras.KeyFile,
+		"tlsCertSaved":  certSaved,
+		"tlsKeySaved":   keySaved,
+		"scheduleFile":  extras.ScheduleFile,
+		"scheduleSaved": scheduleSaved,
 	}, "", "  ")
 	manifest = append(manifest, '\n')
 	if err := writeFileAtomic(filepath.Join(dir, "manifest.json"), manifest, 0o600); err != nil {
@@ -582,7 +768,7 @@ func EditRelay(ctx context.Context, spec RelayEditSpec) (RelayEditReport, error)
 		return report, err
 	}
 	backupDir, err := writeEditBackup(paths, confPath, raw, nginxDir,
-		xraycfg.EditResult{Changed: []string{"relay-target", "relay-listen-port"}})
+		xraycfg.EditResult{Changed: []string{"relay-target", "relay-listen-port"}}, editBackupExtras{})
 	if err != nil {
 		return report, err
 	}

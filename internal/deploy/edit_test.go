@@ -39,7 +39,60 @@ func editSandbox(t *testing.T) (root, configPath string, raw []byte) {
 	if err := os.WriteFile(binPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Edits are a native-manager operation: a Bash-owned root is refused, so
+	// the fixture carries the metadata a real native install writes.
+	metaPath := filepath.Join(root, "etc/idleleo/v1/metadata.json")
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"schemaVersion":1,"activeEngine":"xray","role":"node","tls":"Reality","transport":"raw",` +
+		`"provenance":"native","runtimeConfigPath":"etc/idleleo/conf/xray/config.json"}` + "\n"
+	if err := os.WriteFile(metaPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return root, configPath, g.Config
+}
+
+func TestEditRefusesBashManagedRoot(t *testing.T) {
+	root, _, _ := editSandbox(t)
+	legacyPath := filepath.Join(root, "etc/idleleo/conf/install_config.json")
+	if err := os.WriteFile(legacyPath, []byte(`{"port":443}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := EditConfig(context.Background(), EditSpec{Root: root, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "Bash") {
+		t.Fatalf("a Bash-owned root must be refused, got %v", err)
+	}
+}
+
+func TestEditRefusesImportedProvenance(t *testing.T) {
+	root, _, _ := editSandbox(t)
+	metaPath := filepath.Join(root, "etc/idleleo/v1/metadata.json")
+	seed := `{"schemaVersion":1,"activeEngine":"xray","role":"node","tls":"Reality",` +
+		`"provenance":"legacy","runtimeConfigPath":"etc/idleleo/conf/xray/config.json"}` + "\n"
+	if err := os.WriteFile(metaPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := EditConfig(context.Background(), EditSpec{Root: root, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "legacy") {
+		t.Fatalf("an imported Bash root must be refused, got %v", err)
+	}
+}
+
+func TestTLSPathsReadsTheLivePair(t *testing.T) {
+	conf := `server {
+    listen 443 ssl;
+    server_name example.com;
+    ssl_certificate     /etc/idleleo/cert/a.crt;
+    ssl_certificate_key /etc/idleleo/cert/a.key;
+}`
+	cert, key := tlsPaths(conf)
+	if cert != "/etc/idleleo/cert/a.crt" || key != "/etc/idleleo/cert/a.key" {
+		t.Fatalf("tlsPaths = %q %q", cert, key)
+	}
+	if cert, key := tlsPaths("server { listen 80; }"); cert != "" || key != "" {
+		t.Fatalf("a plain block must not invent a pair: %q %q", cert, key)
+	}
 }
 
 func stubXrayTest(t *testing.T, fn func(ctx context.Context, bin, candidate string) error) {

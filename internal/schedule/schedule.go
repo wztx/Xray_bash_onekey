@@ -573,6 +573,138 @@ func hashRaw(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// observeCert prefers the configured pair, so a certificate stored outside
+// etc/idleleo/cert is still observed after an in-place edit. The directory
+// scan stays as the fallback for installs that never set a path.
+func observeCert(root string, cfg Config) (certObservation, error) {
+	if cfg.CertFile != "" {
+		if obs, ok := scanCertFile(root, cfg.CertFile, cfg.CertKeyFile); ok {
+			return obs, nil
+		}
+	}
+	return scanCert(path(root, CertDirRel))
+}
+
+// scanCertFile observes exactly the configured certificate and key. It
+// reports ok=false when the pair is missing so the caller can fall back.
+func scanCertFile(root, certRel, keyRel string) (certObservation, bool) {
+	var obs certObservation
+	p, err := resolve(root, certRel)
+	if err != nil {
+		return obs, false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return obs, false
+	}
+	for {
+		var block *pem.Block
+		block, b = pem.Decode(b)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		if obs.NotAfter.IsZero() || cert.NotAfter.Before(obs.NotAfter) {
+			obs.NotAfter = cert.NotAfter
+			obs.Name = filepath.Base(p)
+			obs.Path = p
+			obs.Fingerprint = hashRaw(cert.Raw)
+		}
+	}
+	if obs.NotAfter.IsZero() {
+		return obs, false
+	}
+	if keyRel != "" {
+		if kp, err := resolve(root, keyRel); err == nil {
+			if fi, err := os.Stat(kp); err == nil && fi.Mode().Perm()&0o004 != 0 {
+				obs.InsecureKey = append(obs.InsecureKey, fmt.Sprintf("%s mode %04o is world-readable", kp, fi.Mode().Perm()))
+			}
+		}
+	}
+	return obs, true
+}
+
+// SetCertTarget points the cert-renew job at a new domain/pair after an
+// in-place edit. It never issues or renews anything. It returns false when no
+// schedule config exists (nothing to keep in sync). Paths outside the install
+// root cannot be expressed in jobs.json and are reported instead of written.
+func SetCertTarget(root, domain, certFile, keyFile string) (bool, []string, error) {
+	cfgPath := path(root, ConfigRel)
+	b, err := os.ReadFile(cfgPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil, nil
+		}
+		return false, nil, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return false, nil, fmt.Errorf("schedule config is not valid JSON: %w", err)
+	}
+	warnings := []string{}
+	set := func(field, src string) {
+		if src == "" {
+			return
+		}
+		rel, err := relToRoot(root, src)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("schedule %s not updated: %v", field, err))
+			return
+		}
+		raw[field] = rel
+	}
+	if domain != "" {
+		raw["certDomain"] = domain
+	}
+	set("certFile", certFile)
+	set("certKeyFile", keyFile)
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return false, warnings, err
+	}
+	out = append(out, '\n')
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		return false, warnings, err
+	}
+	if err := writeAtomic(cfgPath, out, info.Mode().Perm()); err != nil {
+		return false, warnings, err
+	}
+	return true, warnings, nil
+}
+
+// relToRoot converts a host path used by Nginx into the root-relative form
+// every schedule path uses. A path outside root has no valid representation
+// and is refused rather than stored as "../..".
+func relToRoot(root, p string) (string, error) {
+	if !filepath.IsAbs(p) {
+		if _, err := resolve(root, p); err != nil {
+			return "", err
+		}
+		return filepath.ToSlash(filepath.Clean(p)), nil
+	}
+	rel := ""
+	if filepath.Clean(root) == string(filepath.Separator) {
+		rel = strings.TrimPrefix(filepath.Clean(p), string(filepath.Separator))
+	} else {
+		r, err := filepath.Rel(root, p)
+		if err != nil {
+			return "", err
+		}
+		rel = r
+	}
+	if _, err := resolve(root, rel); err != nil {
+		return "", fmt.Errorf("%s is outside the install root %s", p, root)
+	}
+	return filepath.ToSlash(filepath.Clean(rel)), nil
+}
+
 // certState records the last fingerprint that was actually reloaded. Without
 // it a renewal job cannot tell "nothing changed" from "someone renewed the
 // certificate", and would either never reload or restart on every tick.
@@ -625,7 +757,7 @@ func certFailure(ctx context.Context, root string, cfg Config, at, detail string
 }
 
 func certRenewJob(ctx context.Context, root string, cfg Config, at string) JobResult {
-	obs, err := scanCert(path(root, CertDirRel))
+	obs, err := observeCert(root, cfg)
 	switch {
 	case err != nil && !os.IsNotExist(err):
 		return certFailure(ctx, root, cfg, at, err.Error())
@@ -671,7 +803,7 @@ func certRenewJob(ctx context.Context, root string, cfg Config, at string) JobRe
 			return certFailure(ctx, root, cfg, at, fmt.Sprintf(
 				"%s expires in %d days; renewal was skipped: %s", obs.Name, days, res.Reason))
 		}
-		renewed, serr := scanCert(path(root, CertDirRel))
+		renewed, serr := observeCert(root, cfg)
 		if serr != nil || renewed.NotAfter.IsZero() {
 			return certFailure(ctx, root, cfg, at,
 				"renewal completed but no readable certificate was produced")

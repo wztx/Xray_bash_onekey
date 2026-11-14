@@ -125,6 +125,42 @@ func TestReinstallRollbackRestoresFilesAndService(t *testing.T) {
 	}
 }
 
+func TestPromoteFrontModeRestoresManagedNginx(t *testing.T) {
+	root := sandbox(t)
+	paths := host.Paths{Root: root}
+	dir := filepath.Join(root, nginxDirRel)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainConf := filepath.Join(dir, nginx.MainConf)
+	backends := filepath.Join(dir, "x.realityServers")
+	if err := os.WriteFile(mainConf, []byte("stream {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backends, []byte("server 127.0.0.1:9443;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if mode, _ := promoteFrontMode(paths, xraycfg.ModeNone, "ws"); mode != xraycfg.ModeTLS {
+		t.Fatalf("TLS loopback with managed front promoted to %q, want %q", mode, xraycfg.ModeTLS)
+	}
+	if mode, _ := promoteFrontMode(paths, xraycfg.ModeReality, "raw"); mode != xraycfg.ModeRealityNginx {
+		t.Fatalf("single reality backend promoted to %q, want %q", mode, xraycfg.ModeRealityNginx)
+	}
+	if err := os.WriteFile(backends, []byte("server a:1;\nserver b:2;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := promoteFrontMode(paths, xraycfg.ModeReality, "raw"); mode != xraycfg.ModeRealityBalance {
+		t.Fatalf("two reality backends promoted to %q, want %q", mode, xraycfg.ModeRealityBalance)
+	}
+	if err := os.Remove(mainConf); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := promoteFrontMode(paths, xraycfg.ModeReality, "raw"); mode != xraycfg.ModeReality {
+		t.Fatalf("direct reality changed to %q", mode)
+	}
+}
+
 func TestFreshInstallRollbackRemovesNewFiles(t *testing.T) {
 	root := sandbox(t)
 	var calls []string

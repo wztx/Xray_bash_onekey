@@ -64,8 +64,13 @@ log "seeded_versions=yes shell=${src_version}"
 if [[ "$PROFILE" != "relay" && -f /seed/xray ]]; then
     install -m 0755 /seed/xray /usr/local/bin/xray
     mkdir -p /etc/idleleo/conf/xray /var/log/xray
-    printf '%s\n' '{"log":{"loglevel":"warning"},"inbounds":[],"outbounds":[{"protocol":"freedom","tag":"direct"}]}' \
-        >/etc/idleleo/conf/xray/config.json
+    # Only round 1 gets a placeholder. Round 2 must see the config produced by
+    # round 1, otherwise bash's "keep existing config" reinstall keeps the empty
+    # placeholder and the idempotency round tests nothing.
+    if [[ "$ROUND" == "1" && ! -f /etc/idleleo/conf/xray/config.json ]]; then
+        printf '%s\n' '{"log":{"loglevel":"warning"},"inbounds":[],"outbounds":[{"protocol":"freedom","tag":"direct"}]}' \
+            >/etc/idleleo/conf/xray/config.json
+    fi
     cat >/etc/systemd/system/xray.service <<'UNIT'
 [Unit]
 Description=Xray Service

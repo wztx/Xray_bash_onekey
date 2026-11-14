@@ -170,6 +170,11 @@ def verdict_for(scenario, bash, go, entries):
             bad.append("relay")
         if bad:
             return "BLOCKER", ["%s L4 failed: %s" % (side_name, ",".join(sorted(bad)))]
+        bad2 = [name for name, ok in (side.get("l4Round2") or {}).items() if not ok]
+        if side.get("relayL4Round2") is False:
+            bad2.append("relay")
+        if bad2:
+            return "BLOCKER", ["%s L4 round2 failed: %s" % (side_name, ",".join(sorted(bad2)))]
         idem = side["idempotency"]
         if idem is not None and not idem.get("ok"):
             return "BLOCKER", ["%s idempotency failed" % side_name]
@@ -196,8 +201,9 @@ def render_edits(evidence, matrix):
     if not entries:
         return []
     lines = ["## 配置编辑场景（xray config edit，Go）", "",
-             "| 场景 | 编辑 rc | 检查项 | L4 改前/改后 | 判定 | 说明 |",
-             "|---|---|---|---|---|---|"]
+             "| 场景 | 编辑 rc | SHA 改前 → 改后 | 检查项 | L4 改前/改后 | 判定 | 说明 |",
+             "|---|---|---|---|---|---|---|"]
+    sha_notes = []
     for entry in entries:
         eid = entry["id"]
         base = os.path.join(evidence, eid, "go")
@@ -210,6 +216,9 @@ def render_edits(evidence, matrix):
         def mark(value):
             return "ok" if value is True else ("fail" if value is False else "-")
 
+        def short(value):
+            return (value or "-")[:12]
+
         passed = bool(checks) and checks.get("allPassed") is True and \
             before.get("ok") is True and after.get("ok") is True
         notes = []
@@ -219,17 +228,108 @@ def render_edits(evidence, matrix):
             notes.append("改前 L4 未通过")
         if after.get("ok") is not True:
             notes.append("改后/回滚后 L4 未通过")
+        if eid == "E2" and got.get("configRestored") is True:
+            notes.append("回滚后 SHA 还原")
         detail = ", ".join("%s:%s" % (name, mark(got.get(name))) for name in wanted) or "-"
-        lines.append("| %s %s | %s | %s | %s / %s | **%s** | %s |" % (
-            eid, entry.get("name", ""), checks.get("editRc", "-"), detail,
+        lines.append("| %s %s | %s | %s → %s | %s | %s / %s | **%s** | %s |" % (
+            eid, entry.get("name", ""), checks.get("editRc", "-"),
+            short(checks.get("beforeSha")), short(checks.get("afterSha")), detail,
             mark(before.get("ok")), mark(after.get("ok")),
             "PASS" if passed else "BLOCKER",
             ("; ".join(notes) or entry.get("notes", "")).replace("|", "/")))
+        if checks:
+            sha_notes.append("- %s SHA：改前 `%s` → 改后 `%s`（%s）" % (
+                eid, checks.get("beforeSha", "-"), checks.get("afterSha", "-"),
+                "已还原" if checks.get("beforeSha") == checks.get("afterSha") else "已变更"))
+    lines.append("")
+    lines.extend(sha_notes)
     lines.append("")
     return lines
 
 
-def render(evidence, matrix, entries):
+def cell_parts(side):
+    return {
+        "rc": side["rc"],
+        "l4": side["l4"] if side["l4"] else ({"relay": side["relayL4"]} if side["relayL4"] is not None else {}),
+        "l4r2": side["l4Round2"] if side["l4Round2"] else (
+            {"relay": side["relayL4Round2"]} if side["relayL4Round2"] is not None else {}),
+        "rc2": side["rc2"],
+        "l6": (side["idempotency"] or {}).get("ok"),
+    }
+
+
+def cell_label(bash, go, verdict):
+    def fmt_side(side):
+        parts = cell_parts(side)
+        l4 = ",".join("%s:%s" % (k, "ok" if v is True else "fail") for k, v in sorted(parts["l4"].items())) or "-"
+        l4r2 = ",".join("%s:%s" % (k, "ok" if v is True else "fail") for k, v in sorted(parts["l4r2"].items())) or "-"
+        l6 = "-" if parts["l6"] is None else ("ok" if parts["l6"] else "fail")
+        return "%s / %s / %s / %s / %s" % (
+            parts["rc"] if parts["rc"] is not None else "-", l4, l4r2,
+            parts["rc2"] if parts["rc2"] is not None else "-", l6)
+    return "%s / %s / %s" % (fmt_side(bash), fmt_side(go), verdict)
+
+
+def render_baseline(evidence, baseline, matrix, entries):
+    """Per-scenario diff against an earlier run; only changed cells are named."""
+    if not baseline or not os.path.isdir(baseline):
+        return []
+    global EVID
+    lines = ["## 与基线对比（%s）" % os.path.basename(baseline.rstrip("/")), "",
+             "| 场景 | 基线（bash / go / 判定） | 本轮（bash / go / 判定） | 变化格子 |",
+             "|---|---|---|---|"]
+    current = EVID
+    changed_total = 0
+    try:
+        for scenario in matrix.get("install", []):
+            sid = scenario["id"]
+            snapshots = []
+            for root in (baseline, evidence):
+                EVID = root
+                bash = side_summary(os.path.join(root, sid, "bash"))
+                go = side_summary(os.path.join(root, sid, "go"))
+                verdict, _ = verdict_for(scenario, bash, go, entries)
+                snapshots.append((bash, go, verdict))
+            (bb, bg, bv), (cb, cg, cv) = snapshots
+            changes = []
+            for side_name, old, new in (("bash", bb, cb), ("go", bg, cg)):
+                op, np_ = cell_parts(old), cell_parts(new)
+                for key in ("rc", "l4", "l4r2", "rc2", "l6"):
+                    if op[key] != np_[key]:
+                        if key in ("l4", "l4r2"):
+                            changes.append("%s.%s 变化" % (side_name, key))
+                            continue
+                        changes.append("%s.%s %s→%s" % (
+                            side_name, key, op[key] if op[key] is not None else "-",
+                            np_[key] if np_[key] is not None else "-"))
+            if bv != cv:
+                changes.append("判定 %s→%s" % (bv, cv))
+            if changes:
+                changed_total += 1
+            lines.append("| %s | %s | %s | %s |" % (
+                sid, cell_label(bb, bg, bv), cell_label(cb, cg, cv),
+                "; ".join(changes) if changes else "—"))
+        edit_changes = []
+        for entry in matrix.get("edits", []):
+            eid = entry["id"]
+            base_dir = os.path.join(baseline, eid, "go", "edit", "checks.json")
+            cur_dir = os.path.join(evidence, eid, "go", "edit", "checks.json")
+            if os.path.exists(cur_dir) and not os.path.exists(base_dir):
+                edit_changes.append("%s 新增" % eid)
+        if edit_changes:
+            lines.append("| %s | 无 | 已执行 | %s |" % (
+                ",".join(e.get("id", "") for e in matrix.get("edits", [])),
+                "; ".join(edit_changes)))
+        lines.append("")
+        lines.append("本轮预期变化：G8 → M10 文件集合；G9 → M3/M7 端口；"
+                     "G10 → M4/M7 重启；G11 → E1/E2 新增。")
+        lines.append("")
+    finally:
+        EVID = current
+    return lines
+
+
+def render(evidence, matrix, entries, baseline=None):
     scenarios = matrix.get("install", [])
     lines = []
     lines.append("# P2 install matrix — %s" % os.path.basename(evidence.rstrip("/")))
@@ -305,6 +405,7 @@ def render(evidence, matrix, entries):
             entry.get("path"), ed_state(entry)))
     lines.append("")
     lines.extend(render_edits(evidence, matrix))
+    lines.extend(render_baseline(evidence, baseline, matrix, entries))
     lines.append("## 未覆盖/未验证")
     lines.append("")
     lines.append("- M8（ACME）：`eligible:false`，按计划记 HARNESS-BLOCKED。")
@@ -354,6 +455,7 @@ def main():
     parser.add_argument("--evidence")
     parser.add_argument("--matrix")
     parser.add_argument("--diffs")
+    parser.add_argument("--baseline", help="earlier run directory to diff against")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -366,7 +468,7 @@ def main():
     matrix = read_json(args.matrix, {})
     diffs = read_json(args.diffs, {})
     entries = diffs.get("entries", [])
-    text = render(args.evidence, matrix, entries)
+    text = render(args.evidence, matrix, entries, args.baseline)
     out = os.path.join(args.evidence, "install-matrix.md")
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(text)

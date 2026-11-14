@@ -233,7 +233,8 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		}
 	}
 	if rep.Mode == "" {
-		rep.Mode, rep.Transport, _ = classifyConfig(configBytes)
+		mode, transport, _ := classifyConfig(configBytes)
+		rep.Mode, rep.Transport = promoteFrontMode(paths, mode, transport)
 	}
 	rep.TLS = tlsLabel(rep.Mode)
 
@@ -1129,6 +1130,32 @@ func classifyConfig(raw []byte) (mode, transport string, err error) {
 	default:
 		return xraycfg.ModeNone, network, nil
 	}
+}
+
+// promoteFrontMode re-attaches the mode classifyConfig cannot see. A TLS
+// install behind the managed front has a loopback inbound with security "none",
+// and a Reality front looks like a direct Reality node; only the presence of
+// 00-xray.conf proves the installation is fronted. Without this, a repeat
+// install with --keep-config classifies the preserved runtime as direct and
+// leaves the managed Nginx stopped.
+func promoteFrontMode(paths host.Paths, mode, transport string) (string, string) {
+	if mode != xraycfg.ModeReality && mode != xraycfg.ModeNone {
+		return mode, transport
+	}
+	mainConf, err := paths.Join(filepath.Join(nginxDirRel, nginx.MainConf), false)
+	if err != nil {
+		return mode, transport
+	}
+	if _, err := os.Stat(mainConf); err != nil {
+		return mode, transport
+	}
+	if mode == xraycfg.ModeReality {
+		if realityBackends(filepath.Dir(mainConf)) > 1 {
+			return xraycfg.ModeRealityBalance, transport
+		}
+		return xraycfg.ModeRealityNginx, transport
+	}
+	return xraycfg.ModeTLS, transport
 }
 
 func tlsLabel(mode string) string {

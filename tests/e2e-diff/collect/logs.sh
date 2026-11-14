@@ -16,7 +16,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 collect_unit() {
-    local unit=$1 raw="$tmp/$unit.raw"
+    local unit=$1
+    local raw="$tmp/$unit.raw"
     {
         journalctl -u "$unit" --no-pager -n 300 2>/dev/null || true
         case $unit in

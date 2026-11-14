@@ -488,8 +488,12 @@ if (( ${#EIDS[@]} > 0 )); then
     wait
 fi
 
+BASELINE="${E2E_BASELINE:-$SUITE/evidence/clean-run01-d5f17dc/p2}"
+BASELINE_ARGS=()
+[[ -d "$BASELINE" ]] && BASELINE_ARGS=(--baseline "$BASELINE")
+
 python3 "$SUITE/compare/report.py" --evidence "$EVID" --matrix "$SUITE/matrix.json" \
-    --diffs "$SUITE/expected_diffs.json" >/dev/null 2>&1 || \
+    --diffs "$SUITE/expected_diffs.json" "${BASELINE_ARGS[@]}" >/dev/null 2>&1 || \
     log "report generation failed"
 
 log "P2 finished: $EVID"

@@ -121,3 +121,39 @@ OPS_RESTORE	1	备份恢复	请输入选项	2	verified	install.sh:16674
 OPS_CLEARCERT	1	备份恢复	请输入选项	3	verified	install.sh:16675
 OPS_UNINSTALL	1	备份恢复	请输入选项	4	verified	install.sh:16676
 OPS_LANG	1	主菜单	请输入选项	8	verified	install.sh:16748
+OPS_LB_REALITY	1	主菜单	请输入选项	1	verified	install.sh:16756
+OPS_LB_REALITY	2	安装向导	请输入选项	1	verified	install.sh:16409
+OPS_LB_REALITY	3	Reality 部署方式（负载均衡）	请输入选项	5	verified	install.sh:16173
+OPS_LB_REALITY	4	Reality 负载均衡角色	请输入选项	1	verified	install.sh:16260（主服务器）
+OPS_LB_REALITY	5	Reality\+Nginx 负载均衡	确定公网IP信息	2	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	6	Reality\+Nginx 负载均衡	请输入端口	443	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	7	Reality\+Nginx 负载均衡	确认域名符合要求后请输入	example.com	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	8	Reality\+Nginx 负载均衡	是否仍要设置此域名	y	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	9	Reality\+Nginx 负载均衡	是否需要自定义 .*serverNames	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	10	Reality\+Nginx 负载均衡	是否需要自定义 .*shortIds	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	11	Reality\+Nginx 负载均衡	是否需要自定义 Xray 用户名	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	12	Reality\+Nginx 负载均衡	是否需要自定义字符串映射	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	13	Reality\+Nginx 负载均衡	是否需要自定义 privateKey	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	14	Reality\+Nginx 负载均衡	是否需要设置防火墙	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	15	Reality\+Nginx 负载均衡	异常 SNI 处理方式	1	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	16	Reality\+Nginx 负载均衡	请选择 TLS 版本	1	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	17	Reality\+Nginx 负载均衡	是否启用	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB_REALITY	18	Reality\+Nginx 负载均衡	是否需要设置自动清理日志	n	verified	s2-ops-0434 OPS-31 expect.log
+OPS_LB	1	主菜单	请输入选项	2	verified	s2-ops-0434 OPS-09 expect.log
+OPS_LB	2	配置变更	请输入选项	3	verified	install.sh:16488
+OPS_LB	3	Nginx 配置	请输入选项	1	verified	install.sh:16469
+OPS_LB	4	Nginx 负载均衡	是否变更.*负载均衡	y	verified	s2-ops-0434 OPS-09 expect.log
+OPS_LB	5	TLS 负载均衡协议（仅 TLS）	请输入[:：]	1	verified	s2-ops-0434 OPS-09 expect.log（Reality 无此步）
+OPS_LB	6	file_manager 主菜单-创建	请选择一个选项	2	verified	scripts/file_manager.sh
+OPS_LB	7	file_manager 创建	请输入主机	10.99.0.7	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	8	file_manager 创建	请输入端口	9447	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	9	file_manager 创建	请输入权重	60	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	10	file_manager 创建	是否需要设置防火墙	n	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	11	file_manager 主菜单-列出	请选择一个选项	1	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	12	file_manager 主菜单-删除	请选择一个选项	4	verified	s2-ops-0434 OPS-09 fm-remove.log
+OPS_LB	13	file_manager 删除	请输入要删除的文件编号	1	verified	动态计算排序位次，本次两场景均为 1
+OPS_LB	14	file_manager 主菜单-退出	请选择一个选项	5	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	15	返回值后暂停	回到菜单	\r	verified	GLOBAL:1 同源
+OPS_LB	16	Nginx 配置-退出	请输入选项	0	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	17	配置变更-退出	请输入选项	0	verified	s2-ops-0434 OPS-09 fm-add.log
+OPS_LB	18	主菜单-退出	请输入选项	0	verified	s2-ops-0434 OPS-09 fm-add.log

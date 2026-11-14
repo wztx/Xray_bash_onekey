@@ -680,9 +680,323 @@ ops19_job() {
     log "[$oid] verdict=$(ops19_verdict "$base")"
 }
 
+# --- load-balancer ops (OPS-09 / OPS-31) ----------------------------------
+# Both rows are observed on two real installs: bash creates the backend through
+# the interactive menu (2>3>1 -> file_manager.sh), Go through
+# `idleleo xray balance add/remove`. The verdict compares the on-disk fragment
+# and the documented list output; a missing side is HARNESS-ERROR, a mismatch
+# is BLOCKER, never PASS.
+BALANCE_HOST="${E2E_BALANCE_HOST:-10.99.0.7}"
+BALANCE_PORT="${E2E_BALANCE_PORT:-9447}"
+BALANCE_WEIGHT="${E2E_BALANCE_WEIGHT:-60}"
+
+# nginx_snapshot writes "== <file>" plus its body for every *.<suffix> fragment.
+nginx_snapshot() {
+    local server=$1 suffix=$2 out=$3
+    docker exec "$server" bash -c \
+        'cd /etc/idleleo/conf/nginx 2>/dev/null || exit 0
+         shopt -s nullglob
+         for f in *.'"$suffix"'; do
+             [ -f "$f" ] || continue
+             printf "== %s\n" "$f"
+             cat "$f"
+         done' >"$out" 2>&1 || true
+}
+
+# backend_index prints the 1-based position of <host>.<suffix> in the sorted
+# file list file_manager.sh shows, so the remove phase picks the right row.
+# Prints 0 when the file is absent, which makes the verdict a BLOCKER.
+backend_index() {
+    local server=$1 suffix=$2 name="$3.$2"
+    docker exec "$server" bash -c \
+        'cd /etc/idleleo/conf/nginx || exit 1
+         shopt -s nullglob
+         n=1
+         for f in *.'"$suffix"'; do
+             if [ "$f" = "'"$name"'" ]; then echo "$n"; exit 0; fi
+             n=$((n+1))
+         done
+         echo 0' 2>/dev/null
+}
+
+ops_bash_fm() {
+    local server=$1 out=$2 phase=$3 upstream=$4 idx=$5
+    docker exec -e E2E_LOG="/out/fm-$phase.log" -e E2E_PHASE="$phase" \
+        -e E2E_UPSTREAM="$upstream" -e E2E_BACKEND_HOST="$BALANCE_HOST" \
+        -e E2E_BACKEND_PORT="$BALANCE_PORT" -e E2E_BACKEND_WEIGHT="$BALANCE_WEIGHT" \
+        -e E2E_BACKEND_INDEX="$idx" -e E2E_TIMEOUT="${E2E_TIMEOUT:-900}" \
+        -e XRAY_VERSIONS_FILE=/etc/idleleo/versions.json "$server" \
+        expect -f /src/tests/e2e-diff/drivers/bash_fm_balance.exp \
+        >"$out/fm-$phase.out" 2>&1
+    echo $? >"$out/fm-$phase.rc"
+}
+
+ops_balance_verdict() {
+    local base=$1 oid=$2 upstream=$3 suffix=$4
+    python3 - "$base" "$oid" "$upstream" "$suffix" "$BALANCE_HOST" "$BALANCE_PORT" \
+        "$BALANCE_WEIGHT" <<'PY'
+import json, os, sys
+
+base, oid, upstream, suffix, host, port, weight = sys.argv[1:8]
+port, weight = int(port), int(weight)
+bash_dir, go_dir = os.path.join(base, "bash"), os.path.join(base, "go")
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def read_rc(path):
+    raw = read_text(path)
+    if raw is None:
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return None
+
+
+def read_json(path):
+    raw = read_text(path)
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def snapshot(path):
+    text = read_text(path)
+    if text is None:
+        return None
+    files, cur = {}, None
+    for line in text.splitlines():
+        if line.startswith("== "):
+            cur = line[3:].strip()
+            files[cur] = []
+        elif cur is not None:
+            files[cur].append(line)
+    return {name: "\n".join(body).strip() for name, body in files.items()}
+
+
+def backend_lines(files):
+    out = []
+    for body in (files or {}).values():
+        for line in body.splitlines():
+            line = line.strip()
+            if not (line.startswith("server ") and line.endswith(";")):
+                continue
+            parts = line[:-1].split()
+            addr = parts[1] if len(parts) > 1 else "-"
+            w = next((p for p in parts[2:] if p.startswith("weight=")), "weight=?")
+            out.append("%s %s" % (addr, w))
+    return sorted(out)
+
+
+def go_backends(data):
+    return [b for b in ((data or {}).get("backends") or []) if isinstance(b, dict)]
+
+
+expected = "server %s:%d weight=%d max_fails=2 fail_timeout=10;" % (host, port, weight)
+name = "%s.%s" % (host, suffix)
+
+b_install = read_rc(os.path.join(bash_dir, "install.rc"))
+g_install = read_rc(os.path.join(go_dir, "install.rc"))
+b_add_rc = read_rc(os.path.join(bash_dir, "fm-add.rc"))
+b_rm_rc = read_rc(os.path.join(bash_dir, "fm-remove.rc"))
+g_add_rc = read_rc(os.path.join(go_dir, "02-balance-add.rc"))
+g_rm_rc = read_rc(os.path.join(go_dir, "04-balance-remove.rc"))
+b_add_log = read_text(os.path.join(bash_dir, "fm-add.log"))
+b_rm_log = read_text(os.path.join(bash_dir, "fm-remove.log"))
+b_add_files = snapshot(os.path.join(bash_dir, "files-after-add.txt"))
+b_rm_files = snapshot(os.path.join(bash_dir, "files-after-remove.txt"))
+g_add_files = snapshot(os.path.join(go_dir, "files-after-add.txt"))
+g_rm_files = snapshot(os.path.join(go_dir, "files-after-remove.txt"))
+g_list_add = read_json(os.path.join(go_dir, "03-balance-list-after-add.out"))
+g_list_rm = read_json(os.path.join(go_dir, "05-balance-list-after-remove.out"))
+
+harness = []
+for label, value in (
+        ("bash install rc", b_install), ("go install rc", g_install),
+        ("bash add rc", b_add_rc), ("bash remove rc", b_rm_rc),
+        ("go add rc", g_add_rc), ("go remove rc", g_rm_rc)):
+    if value is None:
+        harness.append("missing %s" % label)
+    elif value == 124:
+        harness.append("driver rc=124 (%s)" % label)
+for label, value in (
+        ("bash add transcript", b_add_log), ("bash remove transcript", b_rm_log),
+        ("bash files after add", b_add_files), ("bash files after remove", b_rm_files),
+        ("go files after add", g_add_files), ("go files after remove", g_rm_files),
+        ("go balance list after add", g_list_add), ("go balance list after remove", g_list_rm)):
+    if value is None:
+        harness.append("missing %s" % label)
+
+reasons = []
+if harness:
+    verdict = "HARNESS-ERROR"
+    reasons = harness
+else:
+    if b_install != 0:
+        reasons.append("bash install rc=%d" % b_install)
+    if g_install != 0:
+        reasons.append("go install rc=%d" % g_install)
+    if b_add_rc != 0:
+        reasons.append("bash file_manager add rc=%d" % b_add_rc)
+    if b_rm_rc != 0:
+        reasons.append("bash file_manager remove rc=%d" % b_rm_rc)
+    if g_add_rc != 0:
+        reasons.append("go balance add rc=%d" % g_add_rc)
+    if g_rm_rc != 0:
+        reasons.append("go balance remove rc=%d" % g_rm_rc)
+    if name not in b_add_files:
+        reasons.append("bash did not write %s" % name)
+    elif b_add_files[name] != expected:
+        reasons.append("bash %s content=%r want=%r" % (name, b_add_files[name], expected))
+    if name not in g_add_files:
+        reasons.append("go did not write %s" % name)
+    elif g_add_files[name] != expected:
+        reasons.append("go %s content=%r want=%r" % (name, g_add_files[name], expected))
+    if name not in (b_add_log or ""):
+        reasons.append("bash list output never shows %s" % name)
+    if "已创建" not in (b_add_log or ""):
+        reasons.append("bash never reported 已创建")
+    if name in b_rm_files:
+        reasons.append("bash still has %s after remove" % name)
+    if name in g_rm_files:
+        reasons.append("go still has %s after remove" % name)
+    if name not in (b_rm_log or ""):
+        reasons.append("bash remove transcript never names %s" % name)
+    if "已删除" not in (b_rm_log or ""):
+        reasons.append("bash never reported 已删除")
+    g_add = [(b.get("host"), b.get("port")) for b in go_backends(g_list_add)]
+    g_rm = [(b.get("host"), b.get("port")) for b in go_backends(g_list_rm)]
+    if (host, port) not in g_add:
+        reasons.append("go balance list does not show %s:%d after add" % (host, port))
+    if (host, port) in g_rm:
+        reasons.append("go balance list still shows %s:%d after remove" % (host, port))
+    verdict = "BLOCKER" if reasons else "PASS"
+
+report = {
+    "id": oid,
+    "verdict": verdict,
+    "upstream": upstream,
+    "bashMenu": "2>3>1",
+    "backend": {"host": host, "port": port, "weight": weight},
+    "expectedLine": expected,
+    "bothInstallRc": {"bash": b_install, "go": g_install},
+    "addRc": {"bash": b_add_rc, "go": g_add_rc},
+    "removeRc": {"bash": b_rm_rc, "go": g_rm_rc},
+    "backends": {"bash": backend_lines(b_add_files), "go": backend_lines(g_add_files)},
+    "files": {
+        "bash": {
+            "dir": "/etc/idleleo/conf/nginx",
+            "suffix": suffix,
+            "created": sorted(b_add_files),
+            "content": b_add_files,
+            "afterRemove": sorted(b_rm_files),
+        },
+        "go": {
+            "dir": "/etc/idleleo/conf/nginx",
+            "suffix": suffix,
+            "created": sorted(g_add_files),
+            "content": g_add_files,
+            "afterRemove": sorted(g_rm_files),
+        },
+    },
+    "list": {
+        "bash": {"showsBackend": name in (b_add_log or ""),
+                 "reportsCreated": "已创建" in (b_add_log or ""),
+                 "reportsDeleted": "已删除" in (b_rm_log or "")},
+        "go": {"afterAdd": go_backends(g_list_add), "afterRemove": go_backends(g_list_rm)},
+    },
+    "reasons": reasons,
+}
+with open(os.path.join(base, "ops.json"), "w", encoding="utf-8") as fh:
+    json.dump(report, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+print(verdict)
+PY
+}
+
+ops_balance_job() {
+    local oid=$1 upstream=$2 suffix=$3 kind=$4
+    local net="e2e-$RUN_ID-$oid"
+    local base="$EVID/$oid" bdir="$EVID/$oid/bash" gdir="$EVID/$oid/go"
+    mkdir -p "$bdir" "$gdir"
+    docker network create "$net" >/dev/null 2>&1 || true
+    log "[$oid] start upstream=$upstream"
+
+    # ---- bash side: real install, then real menu 2>3>1 ----
+    local bserver="e2e-$RUN_ID-$oid-bash"
+    if start_server "$bserver" "$oid" bash "$bdir" "$net"; then
+        if [[ "$kind" == "tls" ]]; then
+            # M4 (tls-ws) install: same entry/answers as the M4 matrix row.
+            run_bash_round M4 "$net" "$bserver" "$bdir" 1 "" tls "-1" "" 1
+        else
+            # Reality 负载均衡 primary: menu 1>1>5 (role) >1 (主服务器).
+            run_bash_round M2 "$net" "$bserver" "$bdir" 1 "" reality "" "1>1>5>1" 1
+        fi
+        ops_bash_fm "$bserver" "$bdir" add "$upstream" 1
+        nginx_snapshot "$bserver" "$suffix" "$bdir/files-after-add.txt"
+        local b_idx; b_idx=$(backend_index "$bserver" "$suffix" "$BALANCE_HOST")
+        ops_bash_fm "$bserver" "$bdir" remove "$upstream" "${b_idx:-0}"
+        nginx_snapshot "$bserver" "$suffix" "$bdir/files-after-remove.txt"
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$bdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$bserver" >/dev/null 2>&1 || true
+
+    # ---- go side: real install, then balance add/list/remove ----
+    local gserver="e2e-$RUN_ID-$oid-go"
+    if start_server "$gserver" "$oid" go "$gdir" "$net"; then
+        docker exec "$gserver" install -m 0755 /seed/idleleo /usr/local/bin/idleleo
+        local -a iargv
+        if [[ "$kind" == "tls" ]]; then
+            iargv=(xray install --binary /usr/local/bin/xray --mode tls --transport ws
+                   --domain "$DOMAIN" --cert /etc/idleleo/cert/xray.crt
+                   --cert-key /etc/idleleo/cert/xray.key --port 9000 --public-port 443
+                   --container)
+            run_go_round "$oid" "$gserver" "$gdir" 1 "" tls "${iargv[@]}"
+        else
+            iargv=(xray install --binary /usr/local/bin/xray --mode reality-balance
+                   --role primary --domain "$TARGET" --target "$TARGET" --port 443
+                   --container)
+            run_go_round "$oid" "$gserver" "$gdir" 1 "" reality "${iargv[@]}"
+        fi
+        ops_go_cli "$gserver" "$gdir" 01-balance-list-before \
+            xray balance list --upstream "$upstream" --json
+        ops_go_cli "$gserver" "$gdir" 02-balance-add \
+            xray balance add --upstream "$upstream" --host "$BALANCE_HOST" \
+            --port "$BALANCE_PORT" --weight "$BALANCE_WEIGHT" --container --json
+        nginx_snapshot "$gserver" "$suffix" "$gdir/files-after-add.txt"
+        ops_go_cli "$gserver" "$gdir" 03-balance-list-after-add \
+            xray balance list --upstream "$upstream" --json
+        ops_go_cli "$gserver" "$gdir" 04-balance-remove \
+            xray balance remove --upstream "$upstream" --host "$BALANCE_HOST" \
+            --port "$BALANCE_PORT" --container --json
+        nginx_snapshot "$gserver" "$suffix" "$gdir/files-after-remove.txt"
+        ops_go_cli "$gserver" "$gdir" 05-balance-list-after-remove \
+            xray balance list --upstream "$upstream" --json
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$gdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$gserver" >/dev/null 2>&1 || true
+    docker network rm "$net" >/dev/null 2>&1 || true
+
+    log "[$oid] verdict=$(ops_balance_verdict "$base" "$oid" "$upstream" "$suffix")"
+}
+
 ops_job() {
     case $1 in
         OPS-19) ops19_job ;;
+        OPS-09) ops_balance_job OPS-09 ws wsServers tls ;;
+        OPS-31) ops_balance_job OPS-31 reality realityServers reality ;;
         *) log "[$1] no execution path in this runner; not claiming a verdict" ;;
     esac
 }
@@ -724,12 +1038,17 @@ if (( ${#EIDS[@]} > 0 )); then
     wait
 fi
 
-# OPS scenarios run after E*. Only OPS-19 has a real execution path; the rest
-# are reported NOT-RUN rather than silently inheriting their declared verdict.
+# OPS scenarios run after E*. OPS-19 (Fail2ban), OPS-09 (Nginx 负载均衡) and
+# OPS-31 (Reality 负载均衡) have real execution paths; every other OPS row is
+# reported NOT-RUN rather than silently inheriting its declared verdict.
 OIDS=()
-if [[ -z "$ONLY" || ",$ONLY," == *",OPS-19,"* ]]; then
-    OIDS+=(OPS-19)
-fi
+for oid in OPS-19 OPS-09 OPS-31; do
+    if [[ -z "$ONLY" ]]; then
+        OIDS+=("$oid")
+    else
+        case ",$ONLY," in *",${oid},"*) OIDS+=("$oid") ;; esac
+    fi
+done
 if (( ${#OIDS[@]} > 0 )); then
     for oid in "${OIDS[@]}"; do
         ops_job "$oid"

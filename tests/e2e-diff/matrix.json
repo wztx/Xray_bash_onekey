@@ -178,7 +178,7 @@
     {"id": "OPS-06", "name": "变更target", "bash": "2>2>3", "answersRef": "OPS_TARGET", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L2", "L4"]},
     {"id": "OPS-07", "name": "变更TLS版本", "bash": "2>2>4", "answersRef": "OPS_TLSVER", "go": null, "verdict": "go-missing", "layers": ["L0", "L2"]},
     {"id": "OPS-08", "name": "SNI Guard", "bash": "2>2>5", "answersRef": "OPS_SNIGUARD", "go": null, "verdict": "go-missing", "layers": ["L0", "L2"]},
-    {"id": "OPS-09", "name": "Nginx负载均衡", "bash": "2>3>1", "answersRef": "OPS_LB", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L2", "L4"]},
+    {"id": "OPS-09", "name": "Nginx负载均衡", "bash": "2>3>1", "answersRef": "OPS_LB", "go": ["idleleo", "xray", "balance", "list", "--upstream", "ws", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L2", "L4"]},
     {"id": "OPS-10", "name": "serverNames", "bash": "2>3>2", "answersRef": "OPS_SNI", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L2"]},
     {"id": "OPS-11", "name": "查看配置信息", "bash": "3>1", "answersRef": "GLOBAL", "go": ["idleleo", "show", "--json"], "verdict": "must-match", "layers": ["L0", "L5"]},
     {"id": "OPS-12", "name": "实时访问日志", "bash": "3>2", "answersRef": "GLOBAL", "go": ["idleleo", "service", "logs", "--unit", "xray", "--lines", "20"], "verdict": "must-match", "layers": ["L0", "L5"]},
@@ -201,7 +201,8 @@
     {"id": "OPS-27", "name": "清空证书文件", "bash": "7>3", "answersRef": "OPS_CLEARCERT", "go": null, "verdict": "go-missing", "layers": ["L0", "L1"]},
     {"id": "OPS-28", "name": "卸载", "bash": "7>4", "answersRef": "OPS_UNINSTALL", "go": ["idleleo", "xray", "uninstall"], "verdict": "must-match", "layers": ["L0", "L1", "L3"]},
     {"id": "OPS-29", "name": "Rill AI 状态", "bash": "9", "answersRef": "GLOBAL", "go": ["idleleo", "rill", "status", "--json"], "verdict": "allowed-diff", "layers": ["L0", "L5"]},
-    {"id": "OPS-30", "name": "修改语言", "bash": "8", "answersRef": "OPS_LANG", "go": null, "verdict": "allowed-diff", "layers": ["L0"]}
+    {"id": "OPS-30", "name": "修改语言", "bash": "8", "answersRef": "OPS_LANG", "go": null, "verdict": "allowed-diff", "layers": ["L0"]},
+    {"id": "OPS-31", "name": "Reality负载均衡", "bash": "2>3>1", "answersRef": "OPS_LB_REALITY", "go": ["idleleo", "xray", "balance", "list", "--upstream", "reality", "--json"], "verdict": "must-match", "layers": ["L0", "L1", "L2", "L4"]}
   ],
   "subscripts": [
     {"id": "S1", "script": "scripts/fail2ban_manager.sh", "trigger": "6>2", "go": null, "states": ["normal", "repeat", "failure"], "layers": ["L0", "L1", "L3"], "mirrorDeps": ["apt"]},

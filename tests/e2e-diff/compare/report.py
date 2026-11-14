@@ -414,19 +414,36 @@ def render_ops(evidence, matrix):
         rcs_text = "bash=%s / go=%s" % (
             rcs.get("bash") if rcs.get("bash") is not None else "-",
             rcs.get("go") if rcs.get("go") is not None else "-")
-        jails = data.get("jails") or {}
-
-        def jail_text(side):
-            names = jails.get(side) or []
-            return "%s: %s" % (side, ",".join(names) if names else "-")
 
         def mark(value):
             return "true" if value is True else ("false" if value is False else "-")
 
-        rows.append((oid, entry.get("name", ""), rcs_text,
-                     "%s ‖ %s" % (jail_text("bash"), jail_text("go")),
-                     "%s / %s" % (mark(data.get("bannedBefore")),
-                                  mark(data.get("bannedAfter"))),
+        backends = data.get("backends")
+        if backends is not None:
+            # Load-balancer rows (OPS-09 / OPS-31) observe backends and files.
+            def backend_text(side):
+                items = backends.get(side) or []
+                return "%s: %s" % (side, ",".join(items) if items else "-")
+            observation = "%s ‖ %s" % (backend_text("bash"), backend_text("go"))
+            files = data.get("files") or {}
+
+            def files_text(side):
+                entry = files.get(side) or {}
+                created = ",".join(entry.get("created") or []) or "-"
+                after = ",".join(entry.get("afterRemove") or []) or "-"
+                return "%s: 创建 %s / 删除后 %s" % (side, created, after)
+            detail = "%s ‖ %s" % (files_text("bash"), files_text("go"))
+        else:
+            jails = data.get("jails") or {}
+
+            def jail_text(side):
+                names = jails.get(side) or []
+                return "%s: %s" % (side, ",".join(names) if names else "-")
+            observation = "%s ‖ %s" % (jail_text("bash"), jail_text("go"))
+            detail = "%s / %s" % (mark(data.get("bannedBefore")),
+                                  mark(data.get("bannedAfter")))
+
+        rows.append((oid, entry.get("name", ""), rcs_text, observation, detail,
                      "**%s**" % (data.get("verdict") or "HARNESS-ERROR"),
                      "; ".join(data.get("reasons") or [])))
     if not rows:
@@ -434,7 +451,7 @@ def render_ops(evidence, matrix):
     lines = ["## OPS 运营场景（实跑证据）", "",
              "只有两侧观测一致才渲染 PASS；声明 `must-match` 却没有 `ops.json` 的 OPS "
              "一律渲染为 NOT-RUN（未执行，不得视为通过）。", "",
-             "| 场景 | 两侧 install rc | jail 集合 | 封禁前 / 解封后仍封禁 | 判定 | 说明 |",
+             "| 场景 | 两侧 install rc | 两侧后端 / jail | 文件（创建 / 删除后）或封禁前 / 解封后 | 判定 | 说明 |",
              "|---|---|---|---|---|---|"]
     for row in rows:
         lines.append("| %s %s | %s | %s | %s | %s | %s |" % (
@@ -637,6 +654,22 @@ def self_test():
             "reasons": ["go fail2ban install rc=1"]})
         text = render(tmp, matrix3, [])
         assert "**BLOCKER**" in text and "go fail2ban install rc=1" in text, text
+        # guardrail 4: load-balancer rows must show both sides' backends and files
+        matrix3["ops"] = [{"id": "OPS-09", "name": "Nginx 负载均衡", "verdict": "must-match"}]
+        text = render(tmp, matrix3, [])
+        assert "**NOT-RUN**" in text, text
+        dump(tmp, "OPS-09/ops.json", {
+            "id": "OPS-09", "verdict": "PASS",
+            "bothInstallRc": {"bash": 0, "go": 0},
+            "backends": {"bash": ["10.99.0.7:9447 weight=60"],
+                         "go": ["10.99.0.7:9447 weight=60"]},
+            "files": {"bash": {"created": ["10.99.0.7.wsServers"], "afterRemove": []},
+                      "go": {"created": ["10.99.0.7.wsServers"], "afterRemove": []}},
+            "reasons": []})
+        text = render(tmp, matrix3, [])
+        assert "**PASS**" in text and "10.99.0.7.wsServers" in text, text
+        assert "bash: 10.99.0.7:9447 weight=60" in text and \
+            "go: 10.99.0.7:9447 weight=60" in text, text
     print("self-test ok")
 
 

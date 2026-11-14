@@ -49,12 +49,12 @@ P0 的 run-id 为 `20261113-1721-fee7a68`。
 `drivers/prompts.tsv`：
 
 - 列：`flow / seq / context / prompt_regex / answer / confidence / source`。
-- `verified` 53 行（来自 a2 已跑通的 expect 转录与 install.sh 菜单行号），`inferred` 52 行（由 install.sh 字符串推导）。
+- `verified` 89 行（来自 a2 已跑通的 expect 转录、install.sh 菜单行号与 OPS-09/OPS-31 实跑转录），`inferred` 52 行（由 install.sh 字符串推导）。
 - **所有 `inferred` 行必须在 P1 首次真实运行时确认**；未确认前不得据此判定业务差异。任何提示未匹配都记 `HARNESS-ERROR`，禁止盲发回车。
 
 `expected_diffs.json`：
 
-- 只预置 5 条待批准项：ED-001 Nginx 负载均衡（OPS-09）、ED-002 Fail2ban（OPS-19）、ED-003 流量阻断（OPS-21）、ED-004 清除日志（OPS-22）、ED-005 Rill AI（OPS-29）。
+- 分类以外仅剩 2 条登记：ED-003 流量阻断（OPS-21，`rejected`，转 C2）、ED-005 Rill AI（OPS-29，`approved`）；ED-001/ED-002/ED-004 已随实现落地删除。
 - 每条必须有 `owner` + `approved_by` + `expires`；当前全部为空、`status: pending`。
 - `pending` / 过期 / 未知 / 通配（`*`）一律按 `DIFF-BLOCKER`，不是豁免。
 

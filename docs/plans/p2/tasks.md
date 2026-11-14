@@ -171,7 +171,24 @@
     install（4 jail + 跳过 sshd）、status、banned、unban（含二次解封 already_absent）、trust add、
     jail disable、uninstall（保留 `user-custom.local`）。
   - 矩阵：OPS-19 由 `go-missing` 改为 `must-match`，ED-002 从 `expected_diffs.json` 移除。
-- [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。
+- [x] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。
+  - 新增 `internal/deploy/balance.go` 与 `idleleo xray balance add|list|remove`
+    （`--upstream ws|grpc|xhttp|reality`、`--host/--port/--weight`、`--probe`、`--container`、`--json`）。
+  - 生成物与 bash 对齐：写 `<host>.<ws|reality>Servers`，行格式
+    `server <host>:<port> weight=<w> max_fails=2 fail_timeout=10;`；`xray install --mode
+    reality-balance --role primary|secondary` 复用 managed Nginx 并生成 `*.realityServers` include。
+  - 主动收紧（G14，不进 ED）：reality-nginx 与二级服务器拒绝增删并指路
+    `--mode reality-balance --role primary`；拒绝删空最后后端、本机回环、端口不匹配、
+    重复/非法 host、保留端口 `443/9403/9404/9443/9444`；`nginx -t` 失败回滚；
+    默认不探测并提示依赖 `max_fails/fail_timeout` 被动摘除，`--probe` 才做 TCP+TLS1.3+SNI。
+  - 门槛：`go test ./internal/deploy -run Balance` 全绿；两端必须实跑，缺任一侧记
+    HARNESS-ERROR，观测不一致记 BLOCKER，绝不写 PASS。
+  - 证据：OPS-09（bash M4 安装 + 菜单 `2>3>1` file_manager 增/列/删 ‖ Go TLS 安装 +
+    `balance add|list|remove --upstream ws`）与 OPS-31（bash `1>1>5>1` reality-balance
+    主服务器 + 同样菜单路径 ‖ Go `--mode reality-balance --role primary`）双端 PASS：
+    `evidence/s2-ops-0434/p2/OPS-09/ops.json`、`.../OPS-31/ops.json`。
+  - 矩阵：OPS-09 由 `go-missing` 改为 `must-match`，新增 OPS-31 `must-match`；
+    ED-001 从 `expected_diffs.json` 移除。
 - [ ] S3 证书路径/域名。
 - [ ] S4 Reality 握手参数。
 - [ ] C2 流量阻断 ruleset（ED-003）。

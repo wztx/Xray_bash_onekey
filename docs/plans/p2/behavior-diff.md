@@ -18,6 +18,7 @@
 | G11 | 配置编辑能力 | bash 靠菜单改配置，无配置级自检、patch 语义与回滚 | 可改（Go 领先） | CLI + 生成 + 安装落地 | 已新增 `xray config edit`（规格 `interactive-config-editing-discussion.md` v1.0）：patch、自检、备份、回滚、二次确认、`--dry-run`/`--no-restart`/`--json` |
 | G12 | `xray logs rotate enable` | 缺 `logrotate` 时 bash 自动 `pkg_install` 后继续；Go 不调用系统包管理器 | 主动不对齐（已批准） | CLI 校验 + 安装落地 | 保持不自动装包：缺二进制时在任何写入前失败，并打印可直接复制的安装命令；详见下节 |
 | G13 | `fail2ban install` | 缺 fail2ban 时 bash 自动 `pkg_install` 后继续；Go 同样不调用系统包管理器 | 主动不对齐（已批准） | CLI 校验 + 安装落地 | 缺 `fail2ban-client` 时失败并打印 deb/rhel/alpine 安装命令，零落盘；与 G12 同一原则 |
+| G14 | 负载均衡后端增删 | bash 的 file_manager 只管写文件+重启，不校验角色、不校验重复 host、不拦保留端口、删到空也不拦；Go 收紧 | 主动收紧（Go 更严，不进 ED） | CLI 校验 + 生成逻辑 + 安装落地 | reality-nginx 与二级服务器拒绝增删并指路 `--mode reality-balance --role primary`；拒绝删空最后后端/重复或非法 host/保留端口；`nginx -t` 失败回滚；默认不探测并提示依赖 `max_fails`/`fail_timeout` 被动摘除，`--probe` 才做 TCP+TLS1.3+SNI；详见下节 |
 
 ## 主动不对齐：G12/G13 不调用系统包管理器
 
@@ -54,6 +55,30 @@ G13 是 `fail2ban`，理由与后果相同。
 何时重新评估：若以后 Go 管理器引入统一的「前置依赖解析」层（例如安装流程本身就要
 校验并补齐一组宿主依赖，且已有可回滚的事务边界），可以把 logrotate 挂进那个层；
 在那之前不做单点特殊处理。
+
+## 主动收紧：G14 负载均衡后端增删
+
+Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生成物**上一致：
+两侧都写 `<host>.<ws|reality>Servers`，行格式同为
+`server <host>:<port> weight=<weight> max_fails=2 fail_timeout=10;`，删除后文件消失。
+差异在于 Go 在 CLI 层多挡了几类会让线上 Nginx 失效或误操作的动作，**这是主动收紧，
+不是缺口，因此不登记 ED**：
+
+- **角色闸**：`reality-nginx` 与 `reality-balance` 二级服务器的后端不由 `xray balance`
+  管理，增删一律拒绝，并在报错里指路 `--mode reality-balance --role primary`；
+  只有 TLS 安装与 reality-balance 主服务器可增删。
+- **删空最后后端**：`remove` 在只剩 1 个后端时拒绝，避免 upstream 变空导致 `nginx -t`
+  失败或 502 面扩大；同时拒绝删除本机回环前端（`127.0.0.1`）与端口不匹配的文件。
+- **重复/非法 host 与保留端口**：`add` 拒绝已存在同名后端、非法主机名，以及
+  `443/9403/9404/9443/9444`（本机公网 TLS、Xray 回环、Reality 后端入口）。
+- **`nginx -t` 失败回滚**：写入后先 `nginx -t`，失败则删除新文件（`remove` 则原子恢复
+  原文件）并返回错误，不留半完成状态。
+- **默认不探测**：不加 `--probe` 时不做存活探测，输出里明确提示依赖 Nginx 的
+  `max_fails=2 fail_timeout=10` 被动摘除；只有 `--probe` 才做 TCP 连接 + TLS 1.3
+  + SNI 握手探测（证书信任不参与判定）。
+
+上述守卫由 `go test ./internal/deploy -run Balance` 固化；端到端一致性由 OPS-09
+（TLS/ws）与 OPS-31（Reality primary）双端实跑取证。
 
 ## 需拍板 / 仍保留
 
@@ -110,4 +135,10 @@ G13 是 `fail2ban`，理由与后果相同。
   （`install` 写入 4 个 jail、sshd 因无活跃 unit 跳过、`unban` 真实解封并复查、
   `trust add` 运行态+持久化、`jail disable` 改 `enabled=false`、`uninstall` 只删
   manifest 内文件并保留用户自定义 `*.local`）。
+- G14：`go test ./internal/deploy -run Balance`（角色闸/删空/重复 host/保留端口/
+  `nginx -t` 回滚/`--probe` 缺省）；端到端 OPS-09 与 OPS-31 双端 PASS
+  （`evidence/s2-ops-0434/p2/OPS-09/ops.json`、`.../OPS-31/ops.json`）：
+  bash 走 M4 或 `1>1>5>1` 安装后用菜单 `2>3>1` 在 file_manager 增/列/删，
+  Go 用 `xray balance add|list|remove`，两侧 `<host>.wsServers` 与
+  `<host>.realityServers` 内容同形、删除后同时消失。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

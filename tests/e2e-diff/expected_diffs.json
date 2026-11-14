@@ -516,26 +516,6 @@
       ]
     },
     {
-      "id": "ED-001",
-      "title": "Nginx 负载均衡 upstream 块",
-      "layer": "L2",
-      "scenarios": [
-        "OPS-09"
-      ],
-      "paths": [
-        "/usr/local/nginx/conf"
-      ],
-      "decision": "fix-go",
-      "rejected_reason": "Go 没有负载均衡配置入口，且 reality-balance 编辑直接拒绝；这是功能空白，不是布局差异。",
-      "backlog": "S2",
-      "owner": "hello-yunshu",
-      "approved_by": "release-gate",
-      "expires": "2027-03-31",
-      "status": "rejected",
-      "approval_note": "不予批准：应改 Go，转入第二梯队待办。",
-      "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
-    },
-    {
       "id": "ED-003",
       "title": "流量阻断规则",
       "layer": "L3",

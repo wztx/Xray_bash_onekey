@@ -543,9 +543,11 @@ func writeNginxArtifacts(dir string, g *xraycfg.Generated) error {
 	for name := range g.NginxFragments {
 		keep[name] = true
 	}
-	// Bash keeps the fragment directory tidy: a mode change must not leave an
-	// old site, upstream server or SNI allowlist behind. Only tool-owned names
-	// are removed, so operator files in the same directory survive.
+	// Bash keeps the fragment directory tidy, but operators also drop their own
+	// backend files here (scripts/file_manager.sh writes <host>.<suffix>). A
+	// reinstall must therefore remove only what this tool generates: the fixed
+	// site names and the 127.0.0.1.* upstream files. A backend an operator added
+	// by hand survives, so reinstalling cannot silently drop live traffic.
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -556,9 +558,12 @@ func writeNginxArtifacts(dir string, g *xraycfg.Generated) error {
 			continue
 		}
 		stale := name == "01-xray-80.conf" || name == "02-xray-server.conf" || name == "03-isolate.conf"
-		for _, suffix := range []string{".serverNames", ".realityServers", ".wsServers", ".grpcServers", ".xhttpServers"} {
-			if strings.HasSuffix(name, suffix) {
-				stale = true
+		if !stale && strings.HasPrefix(name, "127.0.0.1.") {
+			for _, suffix := range []string{".serverNames", ".realityServers", ".wsServers", ".grpcServers", ".xhttpServers"} {
+				if strings.HasSuffix(name, suffix) {
+					stale = true
+					break
+				}
 			}
 		}
 		if stale {

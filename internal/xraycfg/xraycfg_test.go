@@ -548,10 +548,28 @@ func TestGenerateRealityBalanceBackendsAndRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "server 127.0.0.1:9443 weight=50 max_fails=2 fail_timeout=10;\n" +
-		"server 10.0.0.2:9443 weight=50 max_fails=2 fail_timeout=10;\n"
-	if got := g.NginxFragments["127.0.0.1.realityServers"]; got != want {
-		t.Fatalf("multi-backend fragment = %q", got)
+	// Bash keeps one fragment per host: the local front line stays alone and the
+	// added backend gets its own file.
+	if got, want := g.NginxFragments["127.0.0.1.realityServers"], "server 127.0.0.1:9443 weight=50 max_fails=2 fail_timeout=10;\n"; got != want {
+		t.Fatalf("local fragment = %q, want %q", got, want)
+	}
+	if got, want := g.NginxFragments["10.0.0.2.realityServers"], "server 10.0.0.2:9443 weight=50 max_fails=2 fail_timeout=10;\n"; got != want {
+		t.Fatalf("added backend fragment = %q, want %q", got, want)
+	}
+	if _, err := Generate(Spec{
+		Mode: ModeRealityBalance, BalanceRole: BalanceRolePrimary, Port: 8443,
+		ServerNames: []string{"example.com"},
+		Backends:    []string{"10.0.0.2:9443", "10.0.0.2:9444"},
+	}); err == nil || !strings.Contains(err.Error(), "one file per host") {
+		t.Fatalf("two ports on one host must be refused: %v", err)
+	}
+	for _, backend := range []string{"10.0.0.2/../etc:9443", "bad host:9443", "10.0.0..2:9443"} {
+		if _, err := Generate(Spec{
+			Mode: ModeRealityBalance, BalanceRole: BalanceRolePrimary, Port: 8443,
+			ServerNames: []string{"example.com"}, Backends: []string{backend},
+		}); err == nil {
+			t.Fatalf("backend %q must be refused", backend)
+		}
 	}
 	if _, err := Generate(Spec{Mode: ModeRealityBalance, Port: 8443, ServerNames: []string{"example.com"}}); err == nil {
 		t.Fatal("role must be required")

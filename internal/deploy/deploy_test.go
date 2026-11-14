@@ -695,7 +695,6 @@ func TestRollbackFailureIsReportedNotHidden(t *testing.T) {
 func TestWriteNginxArtifactsRemovesStaleManagedFiles(t *testing.T) {
 	dir := t.TempDir()
 	stale := []string{
-		"old.example.com.serverNames",
 		"127.0.0.1.realityServers",
 		"127.0.0.1.wsServers",
 		"01-xray-80.conf",
@@ -705,9 +704,17 @@ func TestWriteNginxArtifactsRemovesStaleManagedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	operator := filepath.Join(dir, "operator-notes.txt")
-	if err := os.WriteFile(operator, []byte("keep me"), 0o644); err != nil {
-		t.Fatal(err)
+	// Operator files, including backends added by scripts/file_manager.sh, must
+	// survive a reinstall: deleting them would silently drop live traffic.
+	preserved := map[string]string{
+		"operator-notes.txt":          "keep me",
+		"old.example.com.serverNames": "old.example.com reality;\n",
+		"10.0.0.2.realityServers":     "server 10.0.0.2:9443 weight=50 max_fails=2 fail_timeout=10;\n",
+	}
+	for name, body := range preserved {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	g := &xraycfg.Generated{
 		NginxConf: "stream {}\n",
@@ -723,8 +730,14 @@ func TestWriteNginxArtifactsRemovesStaleManagedFiles(t *testing.T) {
 			t.Fatalf("stale managed file %s was not removed", name)
 		}
 	}
-	if _, err := os.Stat(operator); err != nil {
-		t.Fatalf("operator file must survive: %v", err)
+	for name, body := range preserved {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("operator file %s must survive: %v", name, err)
+		}
+		if string(got) != body {
+			t.Fatalf("operator file %s was modified: %q", name, got)
+		}
 	}
 	if b, err := os.ReadFile(filepath.Join(dir, "example.com.serverNames")); err != nil || string(b) != "example.com reality;\n" {
 		t.Fatalf("serverNames fragment not written: %v %q", err, b)

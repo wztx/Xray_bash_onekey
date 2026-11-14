@@ -98,6 +98,22 @@ def build(args):
                 'spiderX': rs.get('spiderX') or '/',
             },
         }
+    elif args.mode == 'reality':
+        # Reality's extra transport inbound (bash reality_add_more) listens with
+        # security=none on its own port, so the client mirrors that plain
+        # transport instead of applying the Reality handshake.
+        network = (stream.get('network') or 'tcp').lower()
+        settings = {'network': network, 'security': 'none'}
+        if network == 'ws':
+            ws = stream.get('wsSettings') or {}
+            settings['wsSettings'] = {'path': ws.get('path') or '/'}
+        elif network == 'grpc':
+            grpc = stream.get('grpcSettings') or {}
+            settings['grpcSettings'] = {'serviceName': grpc.get('serviceName') or ''}
+        elif network == 'xhttp':
+            xhttp = stream.get('xhttpSettings') or {}
+            settings['xhttpSettings'] = {'path': xhttp.get('path') or '/'}
+        outbound['streamSettings'] = settings
     elif args.mode in ('tls', 'none'):
         network = (stream.get('network') or 'tcp').lower()
         domain = args.domain

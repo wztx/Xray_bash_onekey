@@ -576,26 +576,6 @@
       "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
     },
     {
-      "id": "ED-004",
-      "title": "日志清理/轮转结果",
-      "layer": "L1",
-      "scenarios": [
-        "OPS-22"
-      ],
-      "paths": [
-        "/var/log"
-      ],
-      "decision": "fix-go",
-      "rejected_reason": "磁盘打满是运维事故，Go 无 logrotate/清理，工作量小。",
-      "backlog": "C3",
-      "owner": "hello-yunshu",
-      "approved_by": "release-gate",
-      "expires": "2027-03-31",
-      "status": "rejected",
-      "approval_note": "不予批准：应改 Go，转入第二梯队待办。",
-      "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
-    },
-    {
       "id": "ED-005",
       "title": "rill agent 输出文本",
       "layer": "L5",

@@ -193,7 +193,7 @@
     {"id": "OPS-19", "name": "Fail2ban", "bash": "6>2", "answersRef": "OPS_F2B", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L3"]},
     {"id": "OPS-20", "name": "流量统计", "bash": "6>3", "answersRef": "OPS_STATS", "go": ["idleleo", "stats", "--json"], "verdict": "must-match", "layers": ["L0", "L5"]},
     {"id": "OPS-21", "name": "流量阻断", "bash": "6>4", "answersRef": "OPS_BLOCK", "go": null, "verdict": "go-missing", "layers": ["L0", "L1", "L3"]},
-    {"id": "OPS-22", "name": "清除日志", "bash": "6>5", "answersRef": "GLOBAL", "go": null, "verdict": "go-missing", "layers": ["L0", "L1"]},
+    {"id": "OPS-22", "name": "清除日志", "bash": "6>5", "answersRef": "GLOBAL", "go": ["idleleo", "xray", "logs", "clean", "--yes", "--json"], "verdict": "must-match", "layers": ["L0", "L1"]},
     {"id": "OPS-23", "name": "服务器网速", "bash": "6>6", "answersRef": "OPS_SPEED", "go": ["idleleo", "speedtest", "--samples", "1", "--bytes", "1048576"], "verdict": "allowed-diff", "layers": ["L0", "L5"]},
     {"id": "OPS-24", "name": "刷新GeoData", "bash": "6>7", "answersRef": "GLOBAL", "go": null, "verdict": "go-missing", "layers": ["L0", "L1"]},
     {"id": "OPS-25", "name": "备份管理文件", "bash": "7>1", "answersRef": "GLOBAL", "go": ["idleleo", "metadata", "export", "--out", "/tmp/e2e-metadata.json"], "verdict": "must-match", "layers": ["L0", "L1"]},

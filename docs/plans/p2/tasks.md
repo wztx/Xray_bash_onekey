@@ -137,7 +137,19 @@
   - 单测：store 快照加载与 port=0 拒绝、安装写入快照、编辑刷新快照；`go test` 三包全绿。
   - 证据：`tests/e2e-diff/evidence/c4-metadata-snapshot-full`（全量矩阵，M1–M7/M9/M10 双侧
     全绿、M8 仍 HARNESS-BLOCKED，E1–E4 全部 PASS）。
-- [ ] C3 日志轮转/清理（ED-004）。
+- [x] C3 日志轮转/清理（ED-004）。
+  - 新增 `idleleo xray logs clean`（`--yes` 必填，截断 Xray/Nginx 日志目录下所有普通
+    `*.log`，保留 inode/属主/权限，符号链接与非日志文件不碰）与
+    `idleleo xray logs rotate enable|disable`（写入与 bash 同构的
+    `etc/logrotate.d/xray_log_cleanup` + `systemd logrotate.service.d` drop-in，
+    `logrotate --debug` 通过后才替换，启用 `logrotate.timer`；disable 只删自己的两个文件）。
+  - 已知偏差（已确认）：bash 会自动 `apt`/`dnf` 装 logrotate，Go 不碰系统包管理器；
+    缺二进制时在任何写入前失败并提示安装，不产生半成品。
+  - 验证：单测覆盖截断范围/递归/符号链接/权限、缺二进制不落盘、`--debug` 拒绝不落盘、
+    disable 不碰其他 logrotate 文件；容器内实测 clean（freedBytes=20、4 个文件归零、
+    keep.txt 保留）、rotate enable（真实 logrotate `--debug` rc=0，配置与 drop-in 内容符）、
+    rotate disable（两个文件删除，无残留）。
+  - 证据：矩阵 OPS-22 由 `go-missing` 改为 `must-match`，ED-004 从 expected_diffs 移除。
 - [ ] C1 fail2ban 接入（ED-002）。
 - [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。
 - [ ] S3 证书路径/域名。

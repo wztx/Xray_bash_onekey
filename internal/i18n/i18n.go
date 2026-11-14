@@ -44,6 +44,8 @@ var zh = map[string]string{
   xray relay           生成指向后端的 nginx 中转配置
   xray user list|add|remove
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
+  xray logs clean|rotate enable|disable
+                       截断 Xray/Nginx 日志；安装或移除 logrotate 自动轮转
   xray install --binary PATH
                        用本地二进制安装 Xray 并接管根目录
   xray uninstall|recover
@@ -109,6 +111,8 @@ Commands:
   xray relay           generate the nginx relay conf for one backend
   xray user list|add|remove
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
+  xray logs clean|rotate enable|disable
+                       truncate Xray/Nginx logs; install or remove logrotate rotation
   xray install --binary PATH
                        install Xray from a local binary and take over the root
   xray uninstall|recover

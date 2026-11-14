@@ -116,6 +116,8 @@ var commandFlags = map[string]flagSpec{
 			"grpc-service-name", "target", "server-names", "uuid", "ws-port", "grpc-port", "xhttp-port",
 			"relay-target", "relay-listen-port"},
 		"dry-run", "no-restart", "yes", "rewrite-config", "container", "allow-non-loopback"),
+	"xray logs clean":  specOf(nil, "yes", "container"),
+	"xray logs rotate": specOf(nil, "container"),
 	"xray user add": specOf(
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "flow", "short-id", "level", "path", "fault"},
 		"container"),

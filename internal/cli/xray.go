@@ -590,6 +590,13 @@ func specFromFlags(args []string) (xraycfg.Spec, error) {
 		}
 		spec.PublicPort = v
 	}
+	// Bash treats "Reality with an Nginx front" as its own install branch, while
+	// the Go CLI names it --mode reality-nginx. Accept the Bash-shaped
+	// combination as an alias so operators migrating argv do not have to learn a
+	// second spelling; the artifacts are identical.
+	if spec.Mode == xraycfg.ModeReality && flagValue(args, "--nginx-bin") != "" {
+		spec.Mode = xraycfg.ModeRealityNginx
+	}
 	if raw := flagValue(args, "--server-names"); raw != "" {
 		for _, s := range strings.Split(raw, ",") {
 			if s = strings.TrimSpace(s); s != "" {

@@ -166,6 +166,39 @@ func TestEditConfigRefreshesInstallSnapshot(t *testing.T) {
 	}
 }
 
+func TestUpdateMetadataAfterEditKeepsLoadableTLSLabel(t *testing.T) {
+	root, _, _ := editSandbox(t)
+	paths, err := host.NewPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metaPath, err := paths.Join(paths.ManagerMetadata(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"schemaVersion":1,"activeEngine":"xray","role":"node","tls":"Reality","transport":"ws",` +
+		`"runtimeConfigPath":"etc/idleleo/conf/xray/config.json"}` + "\n"
+	if err := os.WriteFile(metaPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var rep EditReport
+	updateMetadataAfterEdit(paths, xraycfg.EditResult{Mode: xraycfg.ModeTLS, Transport: "ws"}, []byte(`{"inbounds":[]}`), &rep)
+	if len(rep.Warnings) != 0 {
+		t.Fatalf("metadata update warned: %v", rep.Warnings)
+	}
+	meta, _, err := store.LoadMetadata(paths)
+	if err != nil {
+		t.Fatalf("metadata written by an edit must load: %v", err)
+	}
+	if meta.TLS != "TLS" {
+		t.Fatalf("tls label = %q, want the loadable %q", meta.TLS, "TLS")
+	}
+}
+
 func TestEditConfigRestartFailureRollsBack(t *testing.T) {
 	root, configPath, old := editSandbox(t)
 	stubXrayTest(t, func(context.Context, string, string) error { return nil })

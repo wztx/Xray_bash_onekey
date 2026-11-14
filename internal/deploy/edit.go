@@ -512,12 +512,13 @@ func updateMetadataAfterEdit(paths host.Paths, res xraycfg.EditResult, config []
 	}
 	meta.Transport = res.Transport
 	meta.RuntimeSHA256 = store.HashBytes(config)
+	// tlsLabel is the install-time spelling ("Reality"/"TLS"/"None");
+	// LoadMetadata rejects anything else, so an edit must not invent a
+	// lowercase label that would make the next command fail.
+	meta.TLS = tlsLabel(res.Mode)
 	if meta.Install != nil {
 		// Keep the snapshot describing the live origin, not the pre-edit one.
 		meta.Install.Target, meta.Install.ServerNames = realityOrigin(config)
-	}
-	if res.Mode == xraycfg.ModeTLS {
-		meta.TLS = "tls"
 	}
 	meta.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	body, _ := json.MarshalIndent(meta, "", "  ")

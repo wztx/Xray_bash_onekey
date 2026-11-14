@@ -135,6 +135,8 @@
     前端 listen → 显式 --port → 运行配置首个 inbound」，与 bash install_config 的 port 同义。
   - `internal/deploy/edit.go`：编辑后用生效配置刷新 target/serverNames，端口/版本不动。
   - 单测：store 快照加载与 port=0 拒绝、安装写入快照、编辑刷新快照；`go test` 三包全绿。
+  - 证据：`tests/e2e-diff/evidence/c4-metadata-snapshot-full`（全量矩阵，M1–M7/M9/M10 双侧
+    全绿、M8 仍 HARNESS-BLOCKED，E1–E4 全部 PASS）。
 - [ ] C3 日志轮转/清理（ED-004）。
 - [ ] C1 fail2ban 接入（ED-002）。
 - [ ] S2 负载均衡后端增删 + reality-balance 支持（ED-001）。

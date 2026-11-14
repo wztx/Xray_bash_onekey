@@ -46,6 +46,12 @@ var zh = map[string]string{
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
   xray logs clean|rotate enable|disable
                        截断 Xray/Nginx 日志；安装或移除 logrotate 自动轮转
+  xray balance list --upstream reality|ws|grpc|xhttp
+                       只读列出 Nginx 后端（host/port/weight/file）
+  xray balance add --upstream NAME --host HOST --port PORT [--weight N]
+                       新增一后端文件：nginx -t 失败回滚；默认不做存活探测
+  xray balance remove --upstream NAME --host HOST[:PORT]
+                       删除一后端文件；拒绝删除最后一个后端
   fail2ban status      只读查看各 jail 与当前封禁数
   fail2ban install     写入 sshd/nginx 五个 jail（不自动装包）
   fail2ban uninstall   只删 Idleleo 按 manifest 创建的文件
@@ -124,6 +130,12 @@ Commands:
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
   xray logs clean|rotate enable|disable
                        truncate Xray/Nginx logs; install or remove logrotate rotation
+  xray balance list --upstream reality|ws|grpc|xhttp
+                       read-only Nginx backend list (host/port/weight/file)
+  xray balance add --upstream NAME --host HOST --port PORT [--weight N]
+                       write one backend file; roll back if nginx -t fails; no probe by default
+  xray balance remove --upstream NAME --host HOST[:PORT]
+                       delete one backend file; refuses to remove the last backend
   fail2ban status      read-only jail list with current ban counts
   fail2ban install     write the five sshd/nginx jails (never installs the package)
   fail2ban uninstall   remove only the files Idleleo recorded in its manifest

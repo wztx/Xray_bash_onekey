@@ -466,6 +466,12 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 		OwnedResources:    owned,
 		UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 	}
+	// TLS alone cannot tell a reality-balance primary from reality-nginx, and
+	// `xray balance` refuses to guess. Record the role so the managed backend
+	// list can be identified safely later.
+	if spec.Mode == xraycfg.ModeRealityBalance {
+		meta.BalanceRole = spec.BalanceRole
+	}
 	// Snapshot what Bash keeps in install_config.json. The port is required, so
 	// an install whose entry port cannot be determined omits the snapshot rather
 	// than writing metadata that could never be loaded again.

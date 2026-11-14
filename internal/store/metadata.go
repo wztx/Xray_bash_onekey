@@ -34,6 +34,10 @@ type Metadata struct {
 	OwnedResources    []string         `json:"ownedResources"`
 	UpdatedAt         string           `json:"updatedAt"`
 	Install           *InstallSnapshot `json:"install,omitempty"`
+	// BalanceRole distinguishes a reality-balance primary (it owns the Nginx
+	// front) from reality-nginx, whose TLS label is also "Reality". It is
+	// omitted when unknown so metadata written before this field stays readable.
+	BalanceRole string `json:"balanceRole,omitempty"`
 }
 
 // InstallSnapshot is the non-secret install fingerprint Bash keeps in

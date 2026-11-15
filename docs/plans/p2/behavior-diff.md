@@ -80,6 +80,27 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
 上述守卫由 `go test ./internal/deploy -run Balance` 固化；端到端一致性由 OPS-09
 （TLS/ws）与 OPS-31（Reality primary）双端实跑取证。
 
+## 主动不对齐：G18 shortId 长度形态
+
+bash 与 Go 在 shortId 的**长度形态**上刻意不统一：
+
+- bash 安装/校验强制 **16 hex**（8 字节），不是 16 位就拒绝。
+- Go 自动生成 **8 hex**（4 字节）；`xray config edit --short-id` 接受
+  **1–16 位偶数 hex**（含空串元素），`--short-id ''` 才表示显式清空。
+
+不对齐的理由：
+
+- shortId 是 Reality 的会话判别盐，不是密钥。4 bit/字符，8 hex = 32 bit、
+  16 hex = 64 bit，两者都足够；安全强度由 X25519 privateKey 承担，不由 shortId 长度承担。
+- 强制 16 位只会**缩小**可用的 id 空间：操作者从旧机器、其他面板或客户端迁移过来的
+  合法短 id（2/4/8 位）会被无理由拒绝；Reality 服务端本身接受更短的值。
+- Go 侧把「自动生成」和「显式给出」分开：不指定时给 8 hex；指定时按协议允许的范围
+  校验（偶数 hex、≤16、允许空），不把 bash 的安装期习惯升级成编辑期约束。
+
+后果：同一台机器上 bash 装出来的 sid 是 16 位，Go 装出来的是 8 位；两端都能互相
+接受对方的 id。`xray -test` 与真实 xray 客户端握手均通过（E7 用的就是 Go 生成的
+8 位 id）。这是形态差异，不是兼容性缺口，不登记 ED。
+
 ## 需拍板 / 仍保留
 
 - 目前无“必须动安全闸才能对齐”的项，故无待拍板项。
@@ -181,4 +202,10 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
     （`legacy` 等导入根）时，`xray config edit` 在写入前 rc=2、零落盘，报错指路先迁移。
   - 理由：静默只改两套管理链路中的一套，会让重启后的 Bootstrap 配置覆盖本次编辑，比拒绝
     更危险。
+- G18：shortId 长度形态（8 hex vs 16 hex）：
+  - bash `shortIds_set` 自定义输入用 `^[0-9a-fA-F]{16}$` 校验，自动生成
+    `openssl rand -hex 8`（16 hex）；Go `NewShortID` 自动生成 8 hex，
+    编辑接受 1–16 位偶数 hex（含空串元素）。
+  - E7 用 Go 生成的 8 位 sid 追加/删除，`xray -test` 与真实 xray 客户端握手均通过；
+    bash 侧 16 位 sid 由 M1/M2 安装与 L4 覆盖，二者互相接受。
 - 全量矩阵：`tests/e2e-diff/evidence/<run-id>/p2/install-matrix.md`。

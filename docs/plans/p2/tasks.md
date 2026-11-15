@@ -248,7 +248,35 @@
     - 备份改为保存**改前**证书对（manifest 另记 `tlsNewCertFile/tlsNewKeyFile`）：
       首个 E5 设计核对时发现原实现备份的是新对，不满足「旧证书可回滚」。
   - 已知差异：不自动重签（G16，与 G15 分开登记）。
-- [ ] S4 Reality 握手参数。
+- [x] S4 Reality 握手参数。
+  - 实现：`xray config edit` 新增 `--short-id/--short-id-auto/--short-id-remove/
+    --short-id-list`、`--rotate-reality-private-key`、`--fp/--spx`；不新开子命令。
+    `privateKey` 轮换要求键入 `rotate-reality-key`（非 TTY 用
+    `--confirm-reality-rotation`），`--yes` 不够；轮换前打印旧链接并写
+    `old-share-uri.txt` 到备份目录；shortId 接受 1–16 偶数 hex（含空串），
+    `--short-id ''` 才是显式清空。
+  - `fp`/`spx` 存 metadata 的 `shareLinkOnly`，字段与输出都标明
+    `share link only; server config unchanged`；纯链接偏好编辑不写 runtime、
+    不重启、不 reload，配置 SHA 不变。
+  - `reality-balance` 可编辑：只改 Xray inbound 的 `realitySettings`，
+    `frontDir=""` 且改前改后 `hashTree(nginxDir)` 必须相同（E2E 有断言）。
+  - 探针：真实 xray 客户端 + 隧道内 TLS 握手 + 认证后的 HTTP 请求。只做
+    TLS 握手无法区分「凭据通过」与「Reality 回退到伪装目标」，两者都能握手成功。
+  - 单测：`go test ./internal/xraycfg ./internal/deploy ./internal/cli`
+    （追加/清空/自动/删除、fp/spx 不改 runtime、轮换保留 sid 与 pbk、
+    空 publicPort 时链接仍带 443）。
+  - E2E（`evidence/s4-reality-1115c/p2/`，E7/E8 双 PASS，L4 改前/改后均 ok）：
+    - E7（13 项全 true）：M1 安装 → 旧链接探通 → `--short-id-auto` 追加
+      → 旧/新链接都探通（旧 sid 未断）→ `--short-id-remove` 旧 sid
+      → 旧链接失败、新链接成功；两次编辑都记录 Xray 重启。
+    - E8（14 项全 true）：轮换后新链接探通、旧链接失败、备份含旧链接；
+      注入「重启加载旧配置副本」的 systemd drop-in 后再轮换 → 服务 active
+      但新凭据未生效 → 真实握手失败 → `failurePoint=reality-handshake`
+      → 自动回滚 → `reality-probe-rollback=ok`，旧链接再探通是断言。
+  - 推荐流程（shortId 零断线）：**追加新 id → 客户端切换到新链接 → 删除旧 id**。
+    追加和删除都会重启 Xray（秒级重连），但只要旧 id 还在，旧链接就必须一直可用；
+    不要先删后加。
+  - 已知差异：G18（bash 强制 16 hex，Go 自动生成 8 hex）。
 - [ ] C2 流量阻断 ruleset（ED-003）。
 - [ ] C5 多用户 UUID 单点修改。
 - [ ] C6 direct TLS 支持。

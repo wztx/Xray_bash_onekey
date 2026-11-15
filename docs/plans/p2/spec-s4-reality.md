@@ -52,7 +52,9 @@
 ### 2.4 `internal/deploy/reality_probe.go`
 - `hashTree(dir)`：文件名排序 + sha256。
 - `runRealityHandshake`：解析分享链接 → 临时 client JSON（socks + vless/reality）→
-  真实 TLS 握手到伪装目标；失败带 stderr 尾部。
+  隧道内 TLS 握手到 `example.com:443` → 再向 `example.com:80` 发 HTTP 请求并要求
+  `Example Domain`。只做握手会被 Reality 回退欺骗（未认证流量同样能完成握手），
+  HTTP 请求才证明 VLESS 层认证通过；失败带 stderr 尾部。
 - `verifyRealityHandshake` 变量作为单测 seam。
 
 ### 2.5 `internal/store/metadata.go`

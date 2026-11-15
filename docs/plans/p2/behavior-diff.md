@@ -19,6 +19,7 @@
 | G12 | `xray logs rotate enable` | 缺 `logrotate` 时 bash 自动 `pkg_install` 后继续；Go 不调用系统包管理器 | 主动不对齐（已批准） | CLI 校验 + 安装落地 | 保持不自动装包：缺二进制时在任何写入前失败，并打印可直接复制的安装命令；详见下节 |
 | G13 | `fail2ban install` | 缺 fail2ban 时 bash 自动 `pkg_install` 后继续；Go 同样不调用系统包管理器 | 主动不对齐（已批准） | CLI 校验 + 安装落地 | 缺 `fail2ban-client` 时失败并打印 deb/rhel/alpine 安装命令，零落盘；与 G12 同一原则 |
 | G14 | 负载均衡后端增删 | bash 的 file_manager 只管写文件+重启，不校验角色、不校验重复 host、不拦保留端口、删到空也不拦；Go 收紧 | 主动收紧（Go 更严，不进 ED） | CLI 校验 + 生成逻辑 + 安装落地 | reality-nginx 与二级服务器拒绝增删并指路 `--mode reality-balance --role primary`；拒绝删空最后后端/重复或非法 host/保留端口；`nginx -t` 失败回滚；默认不探测并提示依赖 `max_fails`/`fail_timeout` 被动摘除，`--probe` 才做 TCP+TLS1.3+SNI；详见下节 |
+| G19 | 单用户 UUID 轮换 | bash 只能手改 `config.json` 的 `clients[].id` 再重启，没有定位、只改叶子断言与回滚；Go 新增 `xray user uuid` | Go 增量（bash 无对应命令，不进 ED） | CLI + 配置编辑 + 安装落地 | email 为准、UUID 为别名、拒绝索引；命中多个 inbound 时一次 clone、一次事务全改；失败零落盘；输出明确“重启、所有会话秒级中断”，dry-run 同样列出 inbound 与旧 UUID；`config edit --uuid` 在多用户配置下报错并给出可复制的目标命令。证据 `tests/e2e-diff/evidence/c5-20261115-142437`（26/26） |
 
 ## 主动不对齐：G12/G13 不调用系统包管理器
 

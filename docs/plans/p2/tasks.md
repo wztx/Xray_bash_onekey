@@ -279,19 +279,38 @@
     追加和删除都会重启 Xray（秒级重连），但只要旧 id 还在，旧链接就必须一直可用；
     不要先删后加。
   - 已知差异：G18（bash 强制 16 hex，Go 自动生成 8 hex）。
-- [ ] C2 流量阻断 ruleset（ED-003）。
-- [ ] C5 多用户 UUID 单点修改。
-- [ ] C6 direct TLS 支持。
+- [x] C2 流量阻断（ED-003）：按 `docs/plans/p2/spec-c2-routing-block.md` 实现（D1–D7）。
+  `BlockState` 贯穿 `EditRuntime`，门槛断言已在实装环境跑通（`tests/e2e-diff/evidence/20261115-1401-863cead`，
+  OPS-21 Go 侧 25/25）：装阻断 → `config edit --uuid` → `owned_rules` 6 条逐条 deep-equal 仍在、
+  用户手写规则仍在、控制站仍回 200+marker；`block off` 后 routing 与 apply 前逐字节一致。
+  D5 自定义域名/IP 列表、D6 geo sha256 均已落地并有单测。**遗留：bash 侧对照在本机跑不了
+  （容器无 egress，bash 安装器取不到公网 IP 与 geo 文件），OPS-21 总 verdict 仍记 HARNESS-ERROR，
+  bash 侧必须换一台有出网能力的主机补跑。**
+  期间修掉两个真缺陷：`setApplied` 从未写 `applied` 标记（导致 edit 读不到 BlockState 并拒绝重写
+  sniffing）、`waitActive` 把 systemd 的瞬时 active 当成功（配置不可读时 apply 仍报 rc=0）。
+- [x] C5 多用户 UUID 单点修改：按 `docs/plans/p2/spec-c5-multi-user-uuid.md` 实现。
+  `idleleo xray user uuid --email <e> --new-uuid <v>`，email 为准、UUID 为别名、拒绝索引；
+  命中多个 inbound 默认全改，一次 clone、一次断言、一次事务，失败不落半改状态。
+  `config edit --uuid` 在多用户配置下改为报错并给出可直接复制的目标命令。
+  证据：`tests/e2e-diff/evidence/c5-20261115-142437`（`tests/e2e-diff/run_c5_uuid.sh`，26/26）：
+  改 B 后 A/C 旧链接仍 200+marker，B 旧链接快速 blocked、新链接 200，A/C 的 client 对象与
+  routing 逐字节不变；`--fault service-fail` 后 rc=9、配置哈希不变、A/B/C 三个 UUID 全部仍是旧值；
+  单用户回改后 B 旧链接恢复。多 inbound 的原子性与 dry-run 预览由单测
+  `TestSetUserUUIDUpdatesEveryInboundAtomically` 等覆盖（E2E 安装只含一个 inbound）。
+  输出明确写“会重启、所有会话秒级中断”，dry-run 同样列出 inbound/老 UUID。
+- [ ] C6 direct TLS 支持（规格已出：`docs/plans/p2/spec-c6-direct-tls.md`，续期缺口未解决前不实现）。
 - 规则：每项单独提交；发现「照 bash 做反而降低安全性」先停并上报。
 
 ## 待办（未排期，不要在当前批次顺手改）
 
-- [ ] **ED-003 的 `paths` 标错了，做 C2 之前先修描述。** 现在写的是
-  `nftables/iptables ruleset`，但 bash 的 `scripts/traffic_blocker.sh` 实际生成的是
-  **Xray 路由规则**：`routing.rules` + `blocked` outbound，依赖 `geosite:category-ads-all`、
-  `geoip:private`、国家码、bittorrent 与 `geoip.dat`/`geosite.dat`，**没有任何 nftables/iptables 调用**。
-  不先改就会把 C2 的验收口径描错（去比内核 ruleset 而不是比 xray 配置）。改描述时同步核对
-  `docs/plans/p2/spec.md` 的 C2 段落与 OPS-21 的 layers。
+- [x] **ED-003 的 `paths` 已改回事实（2026-11-15）。** 原值 `nftables/iptables ruleset` 是错的：
+  bash 的 `scripts/traffic_blocker.sh` 实际生成的是 **Xray 路由规则**（`routing.rules` +
+  `blocked` outbound，依赖 `geosite:category-ads-all`、`geoip:private`、国家码、bittorrent
+  与 `geoip.dat`/`geosite.dat`），全文没有任何 `nft`/`iptables` 调用。已改为
+  `config.json#/routing/rules`、`#/routing/domainStrategy`、`#/inbounds/*/sniffing` 与
+  `traffic_blocker.json` 四个语义面，`layer` 由 L3 改为 L2，并把 OPS-21 的 layers 补上 L2。
+  核对结果：`docs/plans/p2/spec.md` 没有 C2 段落（原文只在 tasks 里提），因此无可改；
+  C2 方案落在新文档 `spec-c2-routing-block.md`。
 
 - [ ] **E2E 局部跑（`E2E_ONLY`）会生成一张「局部跑却覆盖全场景」的误导性 `install-matrix.md`。**
   - 现象：`E2E_ONLY="E1,E4" bash tests/e2e-diff/run_p2_matrix.sh` 只跑编辑场景，但

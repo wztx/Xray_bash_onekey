@@ -266,6 +266,50 @@ func (a *App) ChangeUser(ctx context.Context, override string, inbound int, add 
 	return entry, view, nil
 }
 
+// ChangeUserUUID rotates one user's credential through the same atomic
+// transaction as ChangeUser. All matched inbounds are rewritten inside one
+// mutation, so a failure leaves every user on the old UUID.
+func (a *App) ChangeUserUUID(ctx context.Context, override, ident, newUUID string, onlyInbound int, restrictInbound bool, validatorPath, servicePath, fault string, containerAck bool) (change.Entry, xraycfg.UserUUIDChange, error) {
+	if err := a.beginSystemChange(fault, containerAck); err != nil {
+		return change.Entry{}, xraycfg.UserUUIDChange{}, err
+	}
+	if a.Paths.Root == "/" {
+		if err := a.requireManagerMetadata(); err != nil {
+			return change.Entry{}, xraycfg.UserUUIDChange{}, err
+		}
+	}
+	path, err := store.ResolveRuntimePath(a.Paths, override)
+	if err != nil {
+		return change.Entry{}, xraycfg.UserUUIDChange{}, err
+	}
+	if err := a.requireChangeBaseline(path); err != nil {
+		return change.Entry{}, xraycfg.UserUUIDChange{}, err
+	}
+	var view xraycfg.UserUUIDChange
+	req := change.Request{
+		Target: path,
+		Mutate: func(raw []byte) ([]byte, error) {
+			out, v, err := xraycfg.SetUserUUID(raw, ident, newUUID, onlyInbound, restrictInbound)
+			if err != nil {
+				return nil, err
+			}
+			view = v
+			return out, nil
+		},
+		Validator: runtime.XrayValidator{Path: validatorPath, AssetDir: a.Paths.GeodataDir()},
+		Service:   runtime.CommandService{Path: servicePath},
+		Journal:   change.Journal{Path: a.Paths.JournalFile()},
+		LockPath:  a.Paths.LockFile(),
+		Fault:     fault,
+		Finalize:  a.refreshRuntimeSHA,
+	}
+	entry, err := change.Apply(ctx, req)
+	if err != nil {
+		return entry, xraycfg.UserUUIDChange{}, err
+	}
+	return entry, view, nil
+}
+
 // beginSystemChange applies the write gate to every root. For a disposable
 // sandbox this is exactly the old marker check; for the real root it requires
 // the container acknowledgement on a container host and writes the audit line

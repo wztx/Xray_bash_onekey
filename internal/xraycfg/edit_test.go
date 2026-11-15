@@ -148,13 +148,47 @@ func TestEditRefusesMultiUserUUID(t *testing.T) {
 	in := asMap(asSlice(root["inbounds"])[0])
 	settings := asMap(in["settings"])
 	clients := asSlice(settings["clients"])
-	second := asMap(clients[0])
+	clone, _ := json.Marshal(clients[0])
+	var second map[string]any
+	if err := json.Unmarshal(clone, &second); err != nil {
+		t.Fatal(err)
+	}
 	second["id"] = "99999999-2222-3333-4444-555555555555"
 	settings["clients"] = append(clients, second)
 	patched, _ := json.Marshal(root)
 	if _, _, err := EditRuntime(patched, EditDefaults{Mode: ModeReality, PublicPort: 443},
 		EditRequest{UUID: "11111111-2222-3333-4444-555555555555"}); err == nil {
 		t.Fatalf("a single-uuid regeneration must not silently drop extra users")
+	}
+}
+
+func TestEditMultiUserUUIDPointsAtUserCommand(t *testing.T) {
+	raw := editBase(t)
+	root, _ := parseRuntime(raw)
+	in := asMap(asSlice(root["inbounds"])[0])
+	settings := asMap(in["settings"])
+	clients := asSlice(settings["clients"])
+	primaryEmail := asString(asMap(clients[0])["email"])
+	clone, _ := json.Marshal(clients[0])
+	var second map[string]any
+	if err := json.Unmarshal(clone, &second); err != nil {
+		t.Fatal(err)
+	}
+	second["id"] = "99999999-2222-3333-4444-555555555555"
+	second["email"] = "user-b@idleleo"
+	settings["clients"] = append(clients, second)
+	patched, _ := json.Marshal(root)
+	_, _, err := EditRuntime(patched, EditDefaults{Mode: ModeReality, PublicPort: 443},
+		EditRequest{UUID: "11111111-2222-3333-4444-555555555555"})
+	if err == nil {
+		t.Fatal("multi-user config must refuse a global uuid rewrite")
+	}
+	// The message must be actionable, not a vague pointer to another command.
+	for _, want := range []string{"idleleo xray user uuid --email " + primaryEmail,
+		"--new-uuid 11111111-2222-3333-4444-555555555555", "would drop them"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing %q", err, want)
+		}
 	}
 }
 

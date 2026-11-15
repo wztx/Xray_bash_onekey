@@ -323,6 +323,115 @@ func xrayUser(ctx context.Context, opts Options, cfg config, a *app.App, args []
 			fmt.Fprintf(opts.Out, "%d\t%s\t%s\t%s\tprimary=%t\n", u.Index, u.UUID, u.Email, u.Flow, u.Primary)
 		}
 		return 0
+	case "uuid":
+		if sandbox := flagValue(rest, "--sandbox"); sandbox != "" {
+			if cfg.root != "/" && cfg.root != sandbox {
+				return usage(opts, cfg.lang, "help")
+			}
+			paths, err := host.NewPaths(sandbox)
+			if err != nil {
+				return fail(opts, cfg, err)
+			}
+			a.Paths = paths
+		}
+		validator := flagValue(rest, "--validator")
+		if validator == "" {
+			return usage(opts, cfg.lang, "help")
+		}
+		service := flagValue(rest, "--service")
+		if a.Paths.Root == "/" && service == "" {
+			return fail(opts, cfg, &change.UsageError{
+				Msg: "real-root changes require --service so the service reloads the committed config",
+			})
+		}
+		ident := flagValue(rest, "--email")
+		if ident == "" {
+			ident = flagValue(rest, "--uuid")
+		}
+		newUUID := flagValue(rest, "--new-uuid")
+		if ident == "" || newUUID == "" {
+			return usage(opts, cfg.lang, "help")
+		}
+		restrict := hasFlag(rest, "--inbound")
+		targetPath, pathErr := store.ResolveRuntimePath(a.Paths, flagValue(rest, "--path"))
+		if pathErr != nil {
+			return fail(opts, cfg, pathErr)
+		}
+		raw, readErr := os.ReadFile(targetPath)
+		if readErr != nil {
+			return fail(opts, cfg, readErr)
+		}
+		// Dry-run and the real run share one preview so the operator sees the
+		// exact inbound list - and the restart warning - before anything moves.
+		_, preview, err := xraycfg.SetUserUUID(raw, ident, newUUID, inbound, restrict)
+		if err != nil {
+			return fail(opts, cfg, &change.UsageError{Msg: err.Error()})
+		}
+		skipped := []xraycfg.UserRef{}
+		if restrict {
+			// The operator narrowed the blast radius; list what keeps the old
+			// credential so a half-rotated user is visible before the write.
+			if _, all, allErr := xraycfg.SetUserUUID(raw, ident, newUUID, 0, false); allErr == nil {
+				for _, ref := range all.Previous {
+					if ref.Inbound != inbound {
+						skipped = append(skipped, ref)
+					}
+				}
+			}
+		}
+		cfg.json = cfg.json || hasFlag(rest, "--json")
+		renderPreview := func() {
+			if cfg.json {
+				return
+			}
+			fmt.Fprintf(opts.Out, "target: %s\n", preview.Ident)
+			for _, ref := range preview.Previous {
+				fmt.Fprintf(opts.Out, "inbound %d client %d: %s  %s -> %s\n",
+					ref.Inbound, ref.User.Index, ref.User.Email, ref.User.UUID, preview.NewUUID)
+			}
+			for _, ref := range skipped {
+				fmt.Fprintf(opts.Out, "unchanged: inbound %d client %d (%s) keeps the old uuid %s\n",
+					ref.Inbound, ref.User.Index, ref.User.Email, ref.User.UUID)
+			}
+			fmt.Fprintf(opts.Out, "warning: this restarts the Xray service; every live connection drops for a few seconds (all users, not only %s)\n", preview.Ident)
+		}
+		if preview.NoChanges {
+			if cfg.json {
+				return writeJSON(opts, map[string]any{"change": preview, "noChanges": true})
+			}
+			fmt.Fprintf(opts.Out, "no changes: %s already uses %s\n", preview.Ident, newUUID)
+			return 0
+		}
+		if hasFlag(rest, "--dry-run") {
+			if cfg.json {
+				return writeJSON(opts, map[string]any{"dryRun": true, "change": preview})
+			}
+			renderPreview()
+			return 0
+		}
+		renderPreview()
+		entry, result, err := a.ChangeUserUUID(ctx, flagValue(rest, "--path"), ident, newUUID, inbound, restrict,
+			validator, service, flagValue(rest, "--fault"), hasFlag(rest, "--container"))
+		if err != nil {
+			if cfg.json {
+				_ = writeJSONNoExit(opts.Out, entry)
+			}
+			return fail(opts, cfg, err)
+		}
+		if cfg.json {
+			return writeJSON(opts, map[string]any{"entry": entry, "change": result})
+		}
+		fmt.Fprintf(opts.Out, "state: %s (%s)\n", entry.State, entry.ID)
+		for _, ref := range result.Previous {
+			fmt.Fprintf(opts.Out, "rollback: idleleo xray user uuid --email %s --new-uuid %s --validator %s",
+				ref.User.Email, ref.User.UUID, validator)
+			if service != "" {
+				fmt.Fprintf(opts.Out, " --service %s", service)
+			}
+			fmt.Fprintln(opts.Out)
+			break
+		}
+		return 0
 	case "add", "remove":
 		sandbox := flagValue(rest, "--sandbox")
 		if sandbox == "" {

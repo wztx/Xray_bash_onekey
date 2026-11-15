@@ -24,6 +24,9 @@ type EditDefaults struct {
 	// carries them.
 	LinkFingerprint string
 	LinkSpiderX     string
+	// RoutingBlock is the traffic-block state loaded from traffic_blocker.json.
+	// Nil keeps the pre-C2 contract: any routing diff is refused.
+	RoutingBlock *BlockState
 }
 
 // EditRequest carries the operator overrides for `xray config edit`. Zero
@@ -108,6 +111,10 @@ type EditResult struct {
 	// Diff lists the changed runtime paths, so --dry-run and the confirmation
 	// prompt can show exactly what would move.
 	Diff []string
+	// BlockPreserved/BlockRuleCount prove that traffic blocking survived the
+	// edit. A zero count with BlockPreserved=false means no block was applied.
+	BlockPreserved bool
+	BlockRuleCount int
 }
 
 // EditRuntime applies an EditRequest to an existing runtime config. It reads
@@ -124,8 +131,19 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 	if err != nil {
 		return Generated{}, EditResult{}, err
 	}
+	if req.UUID != "" {
+		if inbound, count, email, ok := multiUserInbound(root); ok {
+			// A regeneration would keep clients[0] and silently drop the rest, so
+			// point at the one command that rotates a single user across every
+			// inbound instead of telling the operator to "use something else".
+			return Generated{}, EditResult{}, fmt.Errorf(
+				"inbound %d has %d users; 'config edit --uuid' only rewrites the primary and would drop them. Use: idleleo xray user uuid --email %s --new-uuid %s (on the real root add --validator and --service, as with 'xray user add')",
+				inbound, count, email, req.UUID)
+		}
+	}
 	if req.UUID != "" && !sharedUUID {
-		return Generated{}, EditResult{}, fmt.Errorf("inbounds use different UUIDs; edit users with 'idleleo xray user add/remove'")
+		return Generated{}, EditResult{}, fmt.Errorf(
+			"inbounds use different UUIDs; use: idleleo xray user uuid --email <email> --new-uuid %s (it updates every inbound that carries that user)", req.UUID)
 	}
 	spec.LinkFingerprint, spec.LinkSpiderX = base.LinkFingerprint, base.LinkSpiderX
 	reality := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx || spec.Mode == ModeRealityBalance
@@ -165,7 +183,24 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 	if err != nil {
 		return Generated{}, EditResult{}, err
 	}
-	allow, err := editScopeFor(req, len(inbounds))
+	// Regeneration starts from a bare generator config. Re-apply the traffic
+	// block and hand it the live non-owned rules so an edit never silently
+	// drops blocking or the operator's hand-written routing.
+	var blockApplied BlockState
+	if base.RoutingBlock != nil {
+		liveRules, rulesErr := RoutingRulesFromConfig(raw)
+		if rulesErr != nil {
+			return Generated{}, EditResult{}, rulesErr
+		}
+		userRules := NonOwnedRules(liveRules, base.RoutingBlock.OwnedRules)
+		merged, applied, applyErr := ApplyRoutingBlockWithRules(g.Config, *base.RoutingBlock, userRules)
+		if applyErr != nil {
+			return Generated{}, EditResult{}, applyErr
+		}
+		g.Config = merged
+		blockApplied = applied
+	}
+	allow, err := editScopeFor(req, len(inbounds), base.RoutingBlock != nil)
 	if err != nil {
 		return Generated{}, EditResult{}, err
 	}
@@ -205,7 +240,9 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 		// as a change: the share link the operator copies is the product.
 		NoChanges: len(changed) == 0 ||
 			(len(diffs) == 0 && !nginxOnlyChange(changed) && !linkChanged),
-		Diff: diffs,
+		Diff:           diffs,
+		BlockPreserved: base.RoutingBlock != nil,
+		BlockRuleCount: blockApplied.BlockRuleCount(),
 	}
 	if reality {
 		probeSID := firstShortID(spec.ShortIDs)
@@ -290,10 +327,14 @@ type editScope struct {
 	structural bool
 	exact      map[string]bool
 	prefixes   []string
+	// block allows the routing/sniffing fields that reapplying the traffic
+	// block legitimately rewrites. It is only enabled when a BlockState was
+	// supplied, so an install without blocking keeps the strict scope.
+	block bool
 }
 
-func editScopeFor(req EditRequest, inbounds int) (editScope, error) {
-	a := editScope{exact: map[string]bool{}}
+func editScopeFor(req EditRequest, inbounds int, block bool) (editScope, error) {
+	a := editScope{exact: map[string]bool{}, block: block}
 	if req.Transport != "" || req.WSPath != "" || req.XHTTPPath != "" || req.GRPCServiceName != "" {
 		a.structural = true
 		// The generated routing rules reference inbound tags, so a transport
@@ -330,6 +371,16 @@ func editScopeFor(req EditRequest, inbounds int) (editScope, error) {
 }
 
 func (a editScope) permits(path string) bool {
+	if a.block {
+		// Reapplying the block rewrites exactly these three surfaces.
+		if path == "routing.rules" || path == "routing.domainStrategy" ||
+			strings.HasPrefix(path, "routing.rules[") {
+			return true
+		}
+		if strings.Contains(path, ".sniffing") {
+			return true
+		}
+	}
 	if a.structural && strings.HasPrefix(path, "inbounds") {
 		return true
 	}
@@ -722,6 +773,20 @@ func editSpecFromRuntime(root map[string]any, base EditDefaults) (Spec, bool, er
 	}
 	spec.LinkFingerprint, spec.LinkSpiderX = base.LinkFingerprint, base.LinkSpiderX
 	return spec, sharedUUID, nil
+}
+
+// multiUserInbound reports the first inbound that carries more than one VLESS
+// client. Such a config cannot be regenerated from a single UUID: the generator
+// emits exactly one client per inbound, so the extra users would disappear.
+func multiUserInbound(root map[string]any) (int, int, string, bool) {
+	for i, item := range asSlice(root["inbounds"]) {
+		inbound := asMap(item)
+		clients := asSlice(asMap(inbound["settings"])["clients"])
+		if len(clients) > 1 {
+			return i, len(clients), asString(asMap(clients[0])["email"]), true
+		}
+	}
+	return 0, 0, "", false
 }
 
 // transportFromNetworks maps the inbound network list back to the transport

@@ -162,6 +162,11 @@ def verdict_for(scenario, bash, go, entries):
     if not scenario.get("eligible", True):
         return "HARNESS-BLOCKED", ["scenario ineligible: " + scenario.get("notes", "")]
 
+    # A subset run (E2E_ONLY) never creates the other scenario directories;
+    # that is "not executed", not a harness error.
+    if bash["harness"] == go["harness"] == "missing evidence directory":
+        return "NOT-RUN", ["scenario not executed in this run"]
+
     reasons = []
     for side_name, side in (("bash", bash), ("go", go)):
         if side["harness"]:
@@ -510,9 +515,11 @@ def render(evidence, matrix, entries, baseline=None):
         details.append((sid, scenario, bash, go, verdict, reasons))
 
     lines.append("")
-    lines.append("本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；"
-                 "M8 仍为 HARNESS-BLOCKED；布局差异按类 ED 登记后不再计 BLOCKER，"
-                 "剩余 BLOCKER 只来自未批准 ED（Go 能力缺口）。")
+    counts = {}
+    for _, _, _, _, verdict, _ in details:
+        counts[verdict] = counts.get(verdict, 0) + 1
+    summary = "，".join("%s=%d" % (k, counts[k]) for k in sorted(counts))
+    lines.append("本轮判定：" + summary + "。NOT-RUN 表示该场景未在本轮执行，不得视为通过。")
     lines.append("")
     lines.extend(render_ops(evidence, matrix))
     lines.append("## 未验 / 阻塞项")

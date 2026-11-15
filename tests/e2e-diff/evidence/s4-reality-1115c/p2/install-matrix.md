@@ -1,21 +1,21 @@
 # P2 install matrix — p2
 
-Generated 2026-11-15 10:41:48. Round 1 is primary; round 2 is the idempotency round.
+Generated 2026-11-15 10:46:20. Round 1 is primary; round 2 is the idempotency round.
 
 | 场景 | bash rc / L4r1 / L4r2 / rc2 / L6 | go rc / L4r1 / L4r2 / rc2 / L6 | 判定 | 说明 |
 |---|---|---|---|---|
-| M1 reality-standard | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M2 reality-nginx | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M3 reality-transport | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M4 tls-ws | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M5 tls-grpc | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M6 tls-xhttp | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M7 tls-ws-grpc-xhttp | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
+| M1 reality-standard | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M2 reality-nginx | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M3 reality-transport | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M4 tls-ws | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M5 tls-grpc | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M6 tls-xhttp | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M7 tls-ws-grpc-xhttp | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
 | M8 tls-acme | - / - / - / - / - | - / - / - / - / - | **HARNESS-BLOCKED** | scenario ineligible: 前置：Pebble 的 HTTP-01/TLS-ALPN 在本容器网络的解析方案；方案未定前不判过，标 HARNESS-BLOCKED |
-| M9 none-ws | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
-| M10 relay-stream | - / - / - / - / - | - / - / - / - / - | **HARNESS-ERROR** | bash: missing evidence directory |
+| M9 none-ws | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
+| M10 relay-stream | - / - / - / - / - | - / - / - / - / - | **NOT-RUN** | scenario not executed in this run |
 
-本轮 M1–M7、M9、M10 两侧的 rc、L4（两轮）、rc2、L6 全部通过；M8 仍为 HARNESS-BLOCKED；布局差异按类 ED 登记后不再计 BLOCKER，剩余 BLOCKER 只来自未批准 ED（Go 能力缺口）。
+本轮判定：HARNESS-BLOCKED=1，NOT-RUN=9。NOT-RUN 表示该场景未在本轮执行，不得视为通过。
 
 ## OPS 运营场景（实跑证据）
 
@@ -48,16 +48,7 @@ Generated 2026-11-15 10:41:48. Round 1 is primary; round 2 is the idempotency ro
 
 ## 未验 / 阻塞项
 
-- **M1 reality-standard** — HARNESS-ERROR：bash: missing evidence directory
-- **M2 reality-nginx** — HARNESS-ERROR：bash: missing evidence directory
-- **M3 reality-transport** — HARNESS-ERROR：bash: missing evidence directory
-- **M4 tls-ws** — HARNESS-ERROR：bash: missing evidence directory
-- **M5 tls-grpc** — HARNESS-ERROR：bash: missing evidence directory
-- **M6 tls-xhttp** — HARNESS-ERROR：bash: missing evidence directory
-- **M7 tls-ws-grpc-xhttp** — HARNESS-ERROR：bash: missing evidence directory
 - **M8 tls-acme** — HARNESS-BLOCKED：scenario ineligible: 前置：Pebble 的 HTTP-01/TLS-ALPN 在本容器网络的解析方案；方案未定前不判过，标 HARNESS-BLOCKED
-- **M9 none-ws** — HARNESS-ERROR：bash: missing evidence directory
-- **M10 relay-stream** — HARNESS-ERROR：bash: missing evidence directory
 
 ## L1 布局差异（未抑制）
 
@@ -108,34 +99,6 @@ Generated 2026-11-15 10:41:48. Round 1 is primary; round 2 is the idempotency ro
 
 - E7 SHA：改前 `f83cdb3ee4aed0289fc74f4c5f522181d0312498d72d42fa4cd7f9ce12077bf5` → 改后 `2af50b61970486f4c69412cfdeb7692cec4a93c1661c77566c4d426a1e43407e`（已变更）
 - E8 SHA：改前 `129c4e7a44735ff26f6c9999d803163e2af6861ad9392af0313928e556157f2f` → 改后 `2433ace95251a2b528b4015ed4428e438b1f35f9f744e0cdfa2c11b8f155b384`（已变更）
-
-## 与基线对比（p2）
-
-| 场景 | 基线（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | 本轮（bash ‖ go ‖ 判定；每侧 rc/L4r1/L4r2/rc2/L6） | 变化格子 |
-|---|---|---|---|
-| M1 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:ok / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M2 | 0 / reality:ok / reality:fail / 0 / ok / 0 / reality:ok / reality:fail / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M3 | 0 / reality:ok,ws:ok / reality:fail,ws:fail / 0 / ok / 0 / reality:ok,ws:ok / reality:ok,ws:ok / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M4 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:fail / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M5 | 0 / grpc:ok / grpc:fail / 0 / ok / 0 / grpc:ok / grpc:fail / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M6 | 0 / xhttp:ok / xhttp:fail / 0 / ok / 0 / xhttp:ok / xhttp:fail / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M7 | 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / 0 / grpc:ok,ws:ok,xhttp:ok / grpc:fail,ws:fail,xhttp:fail / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M8 | - / - / - / - / - / - / - / - / - / - / HARNESS-BLOCKED | - / - / - / - / - / - / - / - / - / - / HARNESS-BLOCKED | — |
-| M9 | 0 / ws:ok / ws:fail / 0 / ok / 0 / ws:ok / ws:ok / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| M10 | 0 / relay:ok / relay:ok / 0 / ok / 0 / relay:ok / relay:ok / 0 / ok / BLOCKER | - / - / - / - / - / - / - / - / - / - / HARNESS-ERROR | bash.rc 0→-; bash.l4 变化; bash.l4r2 变化; bash.rc2 0→-; bash.l6 True→-; go.rc 0→-; go.l4 变化; go.l4r2 变化; go.rc2 0→-; go.l6 True→-; 判定 BLOCKER→HARNESS-ERROR |
-| E1,E2,E3,E4,E5,E6,E7,E8 | 无 | 已执行 | E7 新增; E8 新增 |
-
-本轮预期变化：G8 → M10 文件集合；G9 → M3/M7 端口；G10 → M4/M7 重启；G11 → E1/E2 新增。
-
-## 三步改动落地证据
-
-| 主题 | 基线 go | 本轮 go | 本轮 bash | 关联 |
-|---|---|---|---|---|
-| M10 relay nginx 文件 | 00-xray.conf, 03-isolate.conf, nginx.default, relay-stream.conf | - | - | G8 |
-| M3 附加传输端口 | 444 | - | - | G9 |
-| M7 附加传输端口 | 10086, 10087, 10088 | - | - | G9 |
-| M4 TLS 回环端口 | 9000 | -（公网 443） | - | G10 |
-| E1/E2 配置编辑 | 无 | 2 场景 PASS（见上表） | — | G11 |
 
 ## 未覆盖/未验证
 

@@ -479,6 +479,9 @@ edit_job() {
         if [[ "$eid" == "E5" || "$eid" == "E6" ]]; then
             driver="go_edit_tls.sh"
             driver_args=("$eid" "${EDIT_ARGV[@]}")
+        elif [[ "$eid" == "E7" || "$eid" == "E8" ]]; then
+            driver="go_edit_reality.sh"
+            driver_args=("$eid" "${EDIT_ARGV[@]}")
         fi
         docker exec -e E2E_OUT=/out -e E2E_SCENARIO="$eid" "$gserver" \
             bash "/src/tests/e2e-diff/drivers/$driver" "${driver_args[@]}"
@@ -1513,7 +1516,7 @@ done
 # Config-edit scenarios are Go-only and run after the install matrix; they
 # reuse a real M1 install from the same runner build.
 EIDS=()
-for eid in E1 E2 E3 E4 E5 E6; do
+for eid in E1 E2 E3 E4 E5 E6 E7 E8; do
     if [[ -n "$ONLY" ]]; then
         case ",$ONLY," in *,$eid,*) ;; *) continue ;; esac
     fi

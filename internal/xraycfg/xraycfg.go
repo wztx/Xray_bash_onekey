@@ -787,6 +787,9 @@ func buildShareURI(spec Spec, transport, host, publicKey, shortID, serverName st
 	q := func(v string) string { return strings.TrimRight(compat.VLESSURLQuote(v), "\n") }
 	h := strings.TrimSpace(compat.FormatURIAuthorityHost(host))
 	port := spec.PublicPort
+	if port == 0 {
+		port = spec.Port
+	}
 	params := []string{"encryption=none"}
 	name := "idleleo-" + spec.Mode
 	switch transport {

@@ -78,14 +78,19 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 	}
 	if !dryRun && req.RotatePrivateKey {
 		// Printed before anything is written and before the prompt: this is the
-		// link that stops working the moment the new key is accepted.
-		if preview.OldShareURI != "" {
-			fmt.Fprintf(opts.Out, "old share (stops working after rotation): %s\n", preview.OldShareURI)
+		// link that stops working the moment the new key is accepted. In JSON
+		// mode stdout must stay parseable, so the notice goes to stderr.
+		notice := opts.Out
+		if cfg.json {
+			notice = opts.Err
 		}
-		fmt.Fprintln(opts.Out, "rotating the Reality private key disconnects every client until it switches to the new link; the old link cannot be kept alive.")
+		if preview.OldShareURI != "" {
+			fmt.Fprintf(notice, "old share (stops working after rotation): %s\n", preview.OldShareURI)
+		}
+		fmt.Fprintln(notice, "rotating the Reality private key disconnects every client until it switches to the new link; the old link cannot be kept alive.")
 		phrase := strings.TrimSpace(flagValue(args, "--confirm-reality-rotation"))
 		if phrase == "" && opts.TTY {
-			fmt.Fprintf(opts.Out, "Type %q to confirm: ", rotateConfirmPhrase)
+			fmt.Fprintf(notice, "Type %q to confirm: ", rotateConfirmPhrase)
 			scanner := bufio.NewScanner(opts.In)
 			if scanner.Scan() {
 				phrase = strings.TrimSpace(scanner.Text())
@@ -121,6 +126,11 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 	spec.DryRun = false
 	report, err := deploy.EditConfig(ctx, spec)
 	if err != nil {
+		// The report still carries failurePoint, the rollback probe and the
+		// backup path; JSON consumers must see it even on a non-zero exit.
+		if cfg.json {
+			_ = writeJSON(opts, report)
+		}
 		return editFail(opts, cfg, err)
 	}
 	if cfg.json {

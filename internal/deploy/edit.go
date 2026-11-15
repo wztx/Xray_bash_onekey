@@ -83,6 +83,7 @@ type EditReport struct {
 	LinkPrefsUpdated     bool                  `json:"linkPrefsUpdated,omitempty"`
 	LinkFingerprint      string                `json:"linkFingerprint,omitempty"`
 	LinkSpiderX          string                `json:"linkSpiderX,omitempty"`
+	PrivateKeyRotated    bool                  `json:"privateKeyRotated,omitempty"`
 	RealityProbe         string                `json:"realityProbe,omitempty"`
 	RealityRollbackProbe string                `json:"realityRollbackProbe,omitempty"`
 	FailurePoint         string                `json:"failurePoint,omitempty"`
@@ -176,6 +177,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		Domain: res.Domain, CertFile: res.CertFile, CertKeyFile: res.KeyFile,
 		ShortIDs: res.ShortIDs, ShortIDLinks: res.ShortIDLinks,
 		OldShareURI: res.OldShareURI, LinkFingerprint: res.LinkFingerprint, LinkSpiderX: res.LinkSpiderX,
+		PrivateKeyRotated: res.PrivateKeyRotated,
 	}
 	if spec.Request.ListShortIDs {
 		// Read-only: the runtime config and the front are untouched.
@@ -312,7 +314,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 			report.RealityProbe = "failed: " + err.Error()
 			return err
 		}
-		report.RealityProbe = "ok: vless+reality handshake through " + addr
+		report.RealityProbe = "ok: vless+reality handshake+request through " + addr
 		return nil
 	}
 	var failAt func(point string, cause error) (EditReport, error)
@@ -328,7 +330,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 				report.RealityRollbackProbe = "failed: " + probeErr.Error()
 				restoreErr = joinRollbackErr(restoreErr, "old-link handshake probe", probeErr)
 			} else {
-				report.RealityRollbackProbe = "ok: old link still completes a vless+reality handshake"
+				report.RealityRollbackProbe = "ok: old link still completes a vless+reality handshake+request"
 			}
 		}
 		if restoreErr != nil {

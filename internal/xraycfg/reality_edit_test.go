@@ -49,6 +49,19 @@ func TestEditShortIDAppendKeepsOldClients(t *testing.T) {
 	}
 }
 
+func TestEditRealityLinkKeepsPortWithoutPublicDefault(t *testing.T) {
+	raw := editBase(t)
+	// A direct Reality install has no front to supply PublicPort; the share
+	// link must still name the port clients have to dial.
+	g, _, err := EditRuntime(raw, EditDefaults{Mode: ModeReality}, EditRequest{ShortIDAuto: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(g.ShareURI, ":443?") {
+		t.Fatalf("share link lost the public port: %s", g.ShareURI)
+	}
+}
+
 func TestEditShortIDEmptyClearsExplicitly(t *testing.T) {
 	raw := editBase(t)
 	g, res, err := EditRuntime(raw, EditDefaults{Mode: ModeReality, PublicPort: 443},

@@ -23,7 +23,21 @@ import (
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
 )
 
-const realityProbeTarget = "www.cloudflare.com:443"
+// realityProbeTarget is a destination the tunnel must reach *through* VLESS.
+// A bare handshake with the fallback target cannot distinguish an accepted
+// credential: Reality forwards unauthenticated TLS to `dest`, which completes
+// a TLS handshake too. Handshaking with a different host inside the tunnel
+// only succeeds when the VLESS layer authenticated, because the fallback never
+// dials the SOCKS destination.
+const (
+	realityProbeTarget = "example.com:443"
+	// realityProbeHTTPTarget is the authenticated-request leg. When Reality
+	// rejects a credential it forwards the outer TLS stream to `dest`; the
+	// plaintext request then never reaches this destination, so only a real
+	// VLESS session returns the marker.
+	realityProbeHTTPTarget = "example.com:80"
+	realityProbeHTTPMarker = "Example Domain"
+)
 
 // verifyRealityHandshake is a seam for unit tests; production always runs a
 // real client process against the installed binary.
@@ -115,7 +129,49 @@ func runRealityHandshake(ctx context.Context, root, shareURI, addr string) error
 		return fmt.Errorf("reality handshake with %s failed: %w (%s)", realityProbeTarget, err, tail(stderr.String()))
 	}
 	_ = tlsConn.Close()
+	if err := probeRealityRequest(runCtx, "127.0.0.1:"+strconv.Itoa(socksPort)); err != nil {
+		return fmt.Errorf("reality request through %s failed: %w (%s)", realityProbeHTTPTarget, err, tail(stderr.String()))
+	}
 	return nil
+}
+
+// probeRealityRequest proves the VLESS layer authenticated: the HTTP response
+// must come from the requested destination, which the Reality fallback never
+// dials.
+func probeRealityRequest(ctx context.Context, proxy string) error {
+	conn, err := dialSocks(proxy, realityProbeHTTPTarget)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	request := "GET / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: idleleo-probe\r\n" +
+		"Accept: */*\r\nConnection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(request)); err != nil {
+		return err
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetReadDeadline(deadline)
+	} else {
+		_ = conn.SetReadDeadline(time.Now().Add(12 * time.Second))
+	}
+	body, readErr := io.ReadAll(io.LimitReader(conn, 64<<10))
+	text := string(body)
+	line, _, _ := strings.Cut(text, "\r\n")
+	if !strings.HasPrefix(line, "HTTP/1.1 200") && !strings.HasPrefix(line, "HTTP/1.0 200") {
+		return fmt.Errorf("unexpected response %q (read error: %v)", firstLine(text), readErr)
+	}
+	if !strings.Contains(text, realityProbeHTTPMarker) {
+		return fmt.Errorf("marker %q missing from response", realityProbeHTTPMarker)
+	}
+	return nil
+}
+
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\r\n")
+	if len(line) > 120 {
+		return line[:120]
+	}
+	return line
 }
 
 type shareLink struct {

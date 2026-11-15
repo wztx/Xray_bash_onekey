@@ -90,6 +90,20 @@ type tlsProbeResult struct {
 // answered with the wrong certificate". Only the latter fails the edit.
 var errTLSServiceInactive = errors.New("local TLS front is not listening")
 
+// certMismatchError marks a handshake that reached the previous Nginx
+// generation. Reload is asynchronous: SIGHUP returns before the new workers
+// accept connections, so the probe gives it a short window before failing.
+type certMismatchError struct{ addr string }
+
+func (e certMismatchError) Error() string {
+	return fmt.Sprintf("front at %s serves a certificate that differs from the configured file", e.addr)
+}
+
+const (
+	probeRetryWindow = 5 * time.Second
+	probeRetryDelay  = 150 * time.Millisecond
+)
+
 // probeTLSServer is a seam so sandbox tests can avoid a real Nginx.
 var probeTLSServer = defaultProbeTLSServer
 
@@ -120,7 +134,7 @@ func defaultProbeTLSServer(ctx context.Context, addr, serverName string, wantDER
 	}
 	leaf := state.PeerCertificates[0]
 	if len(wantDER) > 0 && !bytes.Equal(leaf.Raw, wantDER) {
-		return res, fmt.Errorf("front at %s serves a certificate that differs from the configured file", addr)
+		return res, certMismatchError{addr: addr}
 	}
 	if err := leaf.VerifyHostname(serverName); err != nil {
 		return res, fmt.Errorf("served certificate does not cover %q: %w", serverName, err)
@@ -155,7 +169,22 @@ func defaultProbeTLSServer(ctx context.Context, addr, serverName string, wantDER
 // is not listening is a warning, never a pass.
 func probeLocalTLS(ctx context.Context, report *EditReport, addr, domain string, wantDER []byte) error {
 	report.TLSProbe = "skipped"
-	res, err := probeTLSServer(ctx, addr, domain, wantDER)
+	deadline := time.Now().Add(probeRetryWindow)
+	var res tlsProbeResult
+	var err error
+	for {
+		res, err = probeTLSServer(ctx, addr, domain, wantDER)
+		var mismatch certMismatchError
+		if err != nil && errors.As(err, &mismatch) && time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(probeRetryDelay):
+				continue
+			}
+		}
+		break
+	}
 	switch {
 	case errors.Is(err, errTLSServiceInactive):
 		report.Warnings = append(report.Warnings, "local TLS handshake not verified: "+err.Error())

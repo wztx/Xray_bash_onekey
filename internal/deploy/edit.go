@@ -216,7 +216,10 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 			schedulePath = p
 		}
 	}
-	extras := editBackupExtras{CertFile: res.CertFile, KeyFile: res.KeyFile, ScheduleFile: schedulePath}
+	// Back up the pair that is serving right now, not the one being installed:
+	// the new files are user-owned and stay on disk, while the previous pair is
+	// what a manual rollback needs.
+	extras := editBackupExtras{CertFile: base.CertFile, KeyFile: base.KeyFile, ScheduleFile: schedulePath}
 	if !tlsTouched {
 		extras = editBackupExtras{}
 	}
@@ -642,17 +645,19 @@ func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir s
 		}
 	}
 	manifest, _ := json.MarshalIndent(map[string]any{
-		"configPath":    configPath,
-		"changed":       res.Changed,
-		"diff":          res.Diff,
-		"createdAt":     time.Now().UTC().Format(time.RFC3339),
-		"tlsDomain":     res.Domain,
-		"tlsCertFile":   extras.CertFile,
-		"tlsKeyFile":    extras.KeyFile,
-		"tlsCertSaved":  certSaved,
-		"tlsKeySaved":   keySaved,
-		"scheduleFile":  extras.ScheduleFile,
-		"scheduleSaved": scheduleSaved,
+		"configPath":     configPath,
+		"changed":        res.Changed,
+		"diff":           res.Diff,
+		"createdAt":      time.Now().UTC().Format(time.RFC3339),
+		"tlsDomain":      res.Domain,
+		"tlsCertFile":    extras.CertFile,
+		"tlsKeyFile":     extras.KeyFile,
+		"tlsNewCertFile": res.CertFile,
+		"tlsNewKeyFile":  res.KeyFile,
+		"tlsCertSaved":   certSaved,
+		"tlsKeySaved":    keySaved,
+		"scheduleFile":   extras.ScheduleFile,
+		"scheduleSaved":  scheduleSaved,
 	}, "", "  ")
 	manifest = append(manifest, '\n')
 	if err := writeFileAtomic(filepath.Join(dir, "manifest.json"), manifest, 0o600); err != nil {

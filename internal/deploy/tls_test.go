@@ -121,6 +121,39 @@ func stubTLSProbe(t *testing.T, fn func(ctx context.Context, addr, serverName st
 	t.Cleanup(func() { probeTLSServer = old })
 }
 
+func TestProbeLocalTLSRetriesTheReloadRace(t *testing.T) {
+	calls := 0
+	stubTLSProbe(t, func(_ context.Context, addr, serverName string, _ []byte) (tlsProbeResult, error) {
+		calls++
+		if calls < 3 {
+			return tlsProbeResult{}, certMismatchError{addr: addr}
+		}
+		return tlsProbeResult{ServerName: serverName, Version: "TLS 1.3"}, nil
+	})
+	report := EditReport{}
+	if err := probeLocalTLS(context.Background(), &report, probeAddress(443), "example.com", []byte("leaf")); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("probe calls = %d, want 3 (the reload window must retry)", calls)
+	}
+	if report.TLSProbe != "ok" {
+		t.Fatalf("TLSProbe = %q, want ok", report.TLSProbe)
+	}
+}
+
+func TestProbeLocalTLSCancelStopsRetrying(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stubTLSProbe(t, func(_ context.Context, addr, _ string, _ []byte) (tlsProbeResult, error) {
+		cancel()
+		return tlsProbeResult{}, certMismatchError{addr: addr}
+	})
+	report := EditReport{}
+	if err := probeLocalTLS(ctx, &report, probeAddress(443), "example.com", []byte("leaf")); err == nil {
+		t.Fatal("a cancelled probe must not report a pass")
+	}
+}
+
 func TestProbeLocalTLSRecordsVerifiedHandshake(t *testing.T) {
 	var gotAddr, gotSNI string
 	stubTLSProbe(t, func(_ context.Context, addr, serverName string, wantDER []byte) (tlsProbeResult, error) {
@@ -184,7 +217,8 @@ func TestWriteEditBackupKeepsTheTLSPairAndSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	backup, err := writeEditBackup(paths, configPath, raw, "", xraycfg.EditResult{
-		Changed: []string{"domain"}, Domain: "new.example.com",
+		Changed: []string{"cert-file"}, Domain: "new.example.com",
+		CertFile: "/etc/idleleo/cert/new.crt", KeyFile: "/etc/idleleo/cert/new.key",
 	}, editBackupExtras{CertFile: cert, KeyFile: key, ScheduleFile: scheduleFile})
 	if err != nil {
 		t.Fatal(err)
@@ -198,11 +232,27 @@ func TestWriteEditBackupKeepsTheTLSPairAndSchedule(t *testing.T) {
 			t.Fatalf("%s mode = %04o, want 0600", name, info.Mode().Perm())
 		}
 	}
+	// The saved pair must be the pre-edit one, and the manifest must still name
+	// the pair that replaced it so an operator can tell the two apart.
+	saved, err := os.ReadFile(filepath.Join(backup, "tls-cert.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(saved) != string(want) {
+		t.Fatal("the backup must contain the certificate that was serving before the edit")
+	}
 	manifest, err := os.ReadFile(filepath.Join(backup, "manifest.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(manifest), `"tlsCertSaved": true`) {
 		t.Fatalf("manifest must record the saved pair: %s", manifest)
+	}
+	if !strings.Contains(string(manifest), `"tlsNewCertFile": "/etc/idleleo/cert/new.crt"`) {
+		t.Fatalf("manifest must name the newly configured pair: %s", manifest)
 	}
 }

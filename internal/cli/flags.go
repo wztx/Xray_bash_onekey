@@ -143,7 +143,7 @@ var commandFlags = map[string]flagSpec{
 		"container"),
 	"xray user uuid": specOf(
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "new-uuid", "path", "fault"},
-		"container", "dry-run", "yes"),
+		"container", "dry-run"),
 	"xray cert issue": specOf(
 		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-key", "state", "renew-before", "ca-cert", "email", "reload-command"},
 		"production", "insecure-skip-verify", "force"),

@@ -59,7 +59,7 @@
 同一用户通常同时出现在 ws / grpc / xhttp 等多个 inbound（同 email、同 UUID）。
 
 - 默认：**所有命中的 inbound 一起改**，否则该用户某个传输会留在旧凭证上，表现为“部分能用”。
-- `--inbound N` 可收窄，但必须同时给 `--yes`，并在输出里逐条列出“这些 inbound 仍保留旧 UUID”。收窄是明确的脚枪，不做静默默认。
+- `--inbound N` 可收窄，输出里逐条列出“这些 inbound 仍保留旧 UUID”。收窄是明确的脚枪，不做静默默认；没有额外的确认参数，重启警告本身就是唯一的拦截信息。
 
 ### 3.3 定位失败
 
@@ -122,7 +122,7 @@
 
 - 正向命令输出 `previousUuid`，并写入 journal 条目与备份清单；运维照原样再执行一次即可退回：
   ```
-  idleleo xray user uuid --email user-b@idleleo --uuid <old-uuid> --yes
+  idleleo xray user uuid --email user-b@idleleo --new-uuid <old-uuid>
   ```
 - **不提供整文件还原**：备份目录里的 `config.json` 只用于人工核对与灾难恢复；自动还原会把该用户改回旧值的同时，覆盖其他人后来的变更。
 - 退还只影响目标用户，仍然是一次重启；断言与正向对称。
@@ -173,7 +173,7 @@
 
 ## 8. 安全闸
 
-1. **显式确认**：root 下必须 `--yes`；`--dry-run` 打印 email、旧→新 UUID、受影响的 inbound 索引、重启警告。
+1. **无额外确认参数**：`--yes` 不在白名单里，传了按未知参数拒绝（rc=2），不做“接受但不产生行为”的假确认；`--dry-run` 打印 email、旧→新 UUID、受影响的 inbound 索引、重启警告。
 2. **写前校验**：`xray -test`（带 geo 资产环境）失败即停止，零写盘。
 3. **定位唯一性**：命中不唯一、越界、未命中全部拒绝。
 4. **凭证冲突**：新 UUID 与其他任何 client 重复即拒绝。
@@ -191,7 +191,7 @@
 2. `internal/app/app.go`
    - `ChangeUserUUID(ctx, override, inbound int, ident, newUUID, ...)`：与 `ChangeUser` 同构（`beginSystemChange` → 元数据基线 → `change.Apply` → `Finalize: refreshRuntimeSHA`），返回 `previous/next` 视图。
 3. `internal/cli/xray.go` + `internal/cli/flags.go`
-   - `idleleo xray user uuid --email|--uuid <old> --new-uuid <v> [--inbound N] [--yes] [--dry-run] [--json] [--validator] [--service]`。
+   - `idleleo xray user uuid --email|--uuid <old> --new-uuid <v> [--inbound N] [--dry-run] [--json] [--validator] [--service]`。
    - `config edit --uuid` 的多用户报错文案改指向新命令。
 4. 单测：`internal/xraycfg/users_test.go`（§7.1）、`internal/app` 的事务级用例（失败注入）。
 5. E2E：`tests/e2e-diff/drivers/` 新驱动 + `matrix.json` 登记；证据入 `tests/e2e-diff/evidence/<run-id>/p2/<case>/{go}/`。

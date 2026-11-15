@@ -37,6 +37,30 @@ ssl_log() {
     printf '%s\n' "$*" >&2
 }
 
+# A pure-Bash install links /usr/bin/idleleo to install.sh, so
+# `idleleo xray cert renew` opens the menu instead of renewing. Only an ELF
+# entry other than that script can renew natively.
+idleleo_native_acme_available() {
+    local bin resolved entry magic
+    # Tests cannot ship a real ELF `idleleo`; the switch only exists under
+    # _TEST_MODE, which production never sets.
+    if [[ "${_TEST_MODE:-0}" == "1" && "${IDLELEO_TEST_NATIVE_ACME:-0}" == "1" ]]; then
+        return 0
+    fi
+    bin=$(command -v idleleo 2>/dev/null || true)
+    [[ -n "${bin}" ]] || return 1
+    resolved=$(readlink -f "${bin}" 2>/dev/null || printf '%s' "${bin}")
+    entry=$(readlink -f "${idleleo_dir}/install.sh" 2>/dev/null || printf '%s' "${idleleo_dir}/install.sh")
+    [[ "${resolved}" != "${entry}" ]] || return 1
+    magic=$(od -An -tx1 -N4 "${resolved}" 2>/dev/null | tr -d ' \n')
+    [[ "${magic}" == "7f454c46" ]]
+}
+
+if [[ "${acme_legacy}" != "1" ]] && ! idleleo_native_acme_available; then
+    acme_legacy=1
+    ssl_log "No Go ACME entry on this host; falling back to acme.sh for renewal"
+fi
+
 release_locks() {
     if [[ "${lock_held}" == "yes" ]]; then
         flock -u 9 2>/dev/null || true

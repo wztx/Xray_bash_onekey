@@ -52,30 +52,47 @@ reset_logs() {
 }
 
 # A native ssl_install must never reach the acme.sh downloader. Record any call
-# so the assertion can prove the download branch was not taken.
+# so the assertion can prove the download branch was not taken. The stub also
+# has to leave a runnable installer behind: the automatic pure-Bash fallback is
+# expected to run it.
 download_script_file() {
     : >"${DOWNLOAD_MARKER}"
+    printf '#!/bin/sh\nexit 0\n' >"$2"
     return 0
 }
 
 base_path=${PATH}
 unset IDLELEO_ACME_LEGACY
+# Native detection needs an ELF `idleleo`, which a test cannot ship. The switch
+# is honored only under _TEST_MODE, so this exercises the real native branch.
+# It is passed per command, never exported, so the fallback case stays unforced.
 
 printf '%s\n' '--- ssl_install default is native and offline ---'
 reset_logs
-if PATH="${STUB_BIN}:${base_path}" ssl_install </dev/null >/dev/null 2>&1 &&
+if IDLELEO_TEST_NATIVE_ACME=1 PATH="${STUB_BIN}:${base_path}" ssl_install </dev/null >/dev/null 2>&1 &&
     [[ ! -e "${DOWNLOAD_MARKER}" ]]; then
     ok "native ssl_install succeeds without downloading acme.sh"
 else
     bad "native ssl_install failed or fell back to downloading acme.sh"
 fi
 
-printf '%s\n' '--- ssl_install fails closed without idleleo ---'
+printf '%s\n' '--- ssl_install falls back to acme.sh without a Go entry ---'
 reset_logs
-if PATH="${base_path}" ssl_install </dev/null >/dev/null 2>&1; then
-    bad "ssl_install succeeded without idleleo on PATH"
+pkg_install() { return 0; }
+judge() { return 0; }
+custom_email=""
+saved_idleleo_dir=${idleleo_dir}
+idleleo_dir="${TMP_ROOT}/idleleo-dir"
+mkdir -p "${idleleo_dir}/tmp"
+PATH="${base_path}" ssl_install </dev/null >"${TMP_ROOT}/fallback.out" 2>&1
+fallback_rc=$?
+idleleo_dir=${saved_idleleo_dir}
+if [[ ${fallback_rc} -eq 0 ]] &&
+    [[ -e "${DOWNLOAD_MARKER}" ]] &&
+    grep -q '回退到 acme.sh' "${TMP_ROOT}/fallback.out"; then
+    ok "pure-Bash ssl_install switches to acme.sh and says why"
 else
-    ok "native ssl_install fails closed when idleleo is missing"
+    bad "fallback to acme.sh missing or silent (rc=${fallback_rc}): $(cat "${TMP_ROOT}/fallback.out")"
 fi
 
 printf '%s\n' '--- acme() issues through idleleo ---'
@@ -88,7 +105,7 @@ get_nginx_worker_group() { printf '%s' "idleleo-nginx"; }
 apply_nginx_layered_permissions() { return 0; }
 verify_nginx_layered_permissions() { return 0; }
 reset_logs
-if PATH="${STUB_BIN}:${base_path}" acme </dev/null >/dev/null 2>&1 &&
+if IDLELEO_TEST_NATIVE_ACME=1 PATH="${STUB_BIN}:${base_path}" acme </dev/null >/dev/null 2>&1 &&
     grep -q 'xray cert issue --domain example\.com' "${IDLELEO_CALL_LOG}" &&
     [[ $(grep -c '^stop nginx$' "${SYSTEMCTL_CALL_LOG}") -eq 1 ]]; then
     ok "native acme() calls 'xray cert issue --domain example.com' and stops nginx once"
@@ -99,7 +116,7 @@ fi
 printf '%s\n' '--- acme() is really red when idleleo fails ---'
 reset_logs
 export FAKE_IDLELEO_RC=1
-PATH="${STUB_BIN}:${base_path}" acme </dev/null >/dev/null 2>&1
+PATH="${STUB_BIN}:${base_path}" IDLELEO_TEST_NATIVE_ACME=1 acme </dev/null >/dev/null 2>&1
 acme_rc=$?
 unset FAKE_IDLELEO_RC
 if [[ ${acme_rc} -eq 0 ]]; then
@@ -185,6 +202,8 @@ run_ssl_update() {
         XRAY_UPDATE_LOCK_FILE="${d}/update.lock" \
         IDLELEO_CALL_LOG="${IDLELEO_CALL_LOG}" \
         SYSTEMCTL_CALL_LOG="${SYSTEMCTL_CALL_LOG}" \
+        _TEST_MODE=1 \
+        IDLELEO_TEST_NATIVE_ACME=1 \
         "$@" \
         bash "${REPO_DIR}/scripts/ssl_update.sh"
 }

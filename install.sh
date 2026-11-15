@@ -337,15 +337,53 @@ xray_systemd_file="/etc/systemd/system/xray.service"
 xray_access_log="/var/log/xray/access.log"
 xray_error_log="/var/log/xray/error.log"
 # S7-4: issuing and renewing certificates moves to `idleleo xray cert issue|renew`
-# (lego, internal/acme). acme.sh is kept for one release behind this explicit
-# switch so an operator can fall back without reinstalling; the directory
-# /root/.acme.sh itself is never deleted.
+# (lego, internal/acme). acme.sh stays for one release: an operator can force it
+# with IDLELEO_ACME_LEGACY=1, and a pure-Bash host (no ELF `idleleo`) falls back
+# to it automatically because that is the only path there that also renews.
+# The directory /root/.acme.sh itself is never deleted.
 amce_sh_file="/root/.acme.sh/acme.sh"
+# A pure-Bash install links /usr/bin/idleleo to this script, so an
+# `idleleo xray cert issue` call lands on the menu instead of the Go ACME
+# client. Only an ELF entry other than this script can issue natively.
+idleleo_native_acme_available() {
+    local bin resolved entry magic
+    # Tests cannot ship a real ELF `idleleo`, so they opt in explicitly. The
+    # switch only exists under _TEST_MODE, which production never sets.
+    if [[ "${_TEST_MODE:-0}" == "1" && "${IDLELEO_TEST_NATIVE_ACME:-0}" == "1" ]]; then
+        return 0
+    fi
+    bin=$(command -v idleleo 2>/dev/null || true)
+    [[ -n "${bin}" ]] || return 1
+    resolved=$(readlink -f "${bin}" 2>/dev/null || printf '%s' "${bin}")
+    entry=$(readlink -f "${idleleo}" 2>/dev/null || printf '%s' "${idleleo}")
+    [[ "${resolved}" != "${entry}" ]] || return 1
+    magic=$(od -An -tx1 -N4 "${resolved}" 2>/dev/null | tr -d ' \n')
+    [[ "${magic}" == "7f454c46" ]]
+}
+
 acme_legacy_enabled() {
-    [[ "${IDLELEO_ACME_LEGACY:-0}" == "1" ]]
+    [[ "${IDLELEO_ACME_LEGACY:-0}" == "1" ]] && return 0
+    idleleo_native_acme_available && return 1
+    return 0
+}
+
+# Do not switch silently: a pure-Bash host has no native ACME client, so
+# acme.sh is the only path that can both issue and renew. Called before an
+# actual issue/renew so status checks stay quiet.
+acme_legacy_fallback_note() {
+    [[ "${IDLELEO_ACME_LEGACY:-0}" == "1" ]] && return 0
+    idleleo_native_acme_available && return 0
+    if [[ "${_acme_legacy_fallback_noted:-0}" != "1" ]]; then
+        _acme_legacy_fallback_noted=1
+        log_echo "${Warning} ${YellowBG} $(gettext "当前是纯 Bash 安装, 没有 Go ACME 客户端; 证书签发与续期自动回退到 acme.sh") ${Font}"
+    fi
+    return 0
 }
 auto_update_file="${scripts_dir}/auto_update.sh"
 ssl_update_file="${scripts_dir}/ssl_update.sh"
+# Set by acme() when this run issues a certificate. Used to decide whether the
+# renewal-scheduler assertion is binding or only informational.
+cert_issued_this_run="no"
 geo_update_file="${scripts_dir}/geo_update.sh"
 xray_stats_script="${scripts_dir}/xray_stats.sh"
 shell_release_sha256=""
@@ -7662,6 +7700,7 @@ auto_update() {
 }
 
 ssl_install() {
+    acme_legacy_fallback_note
     if ! acme_legacy_enabled; then
         if ! command -v idleleo >/dev/null 2>&1; then
             log_echo "${Error} ${RedBG} $(gettext "未找到 idleleo 入口, 无法使用原生 ACME 签发证书") ${Font}"
@@ -8082,6 +8121,7 @@ port_exist_check() {
 }
 
 acme() {
+    acme_legacy_fallback_note
     systemctl restart nginx
     if ! acme_legacy_enabled; then
         local idleleo_bin="" _cert_group="" _reloadcmd=""
@@ -8119,6 +8159,7 @@ acme() {
         apply_nginx_layered_permissions || return 1
         verify_nginx_layered_permissions || return 1
         log_echo "${OK} ${GreenBG} SSL $(gettext "证书配置") $(gettext "成功") ${Font}"
+        cert_issued_this_run="yes"
         systemctl stop nginx
         return 0
     fi
@@ -8141,6 +8182,7 @@ acme() {
             apply_nginx_layered_permissions || return 1
             verify_nginx_layered_permissions || return 1
             log_echo "${OK} ${GreenBG} SSL $(gettext "证书配置") $(gettext "成功") ${Font}"
+            cert_issued_this_run="yes"
             systemctl stop nginx
         else
             log_echo "${Error} ${RedBG} SSL $(gettext "证书配置") $(gettext "失败") ${Font}"
@@ -9075,46 +9117,139 @@ service_stop() {
 
 acme_cron_update() {
     if [[ ${tls_mode} == "TLS" ]]; then
-        local crontab_file
+        local crontab_file acme_sh_cron_present="no"
         crontab_file="$(root_crontab_path)"
-        if [[ -f "${ssl_update_file}" ]] && [[ $(crontab -l | grep -Fc -- "${ssl_update_file}") == "1" ]]; then
+        if crontab -l 2>/dev/null | grep -Eq 'acme\.sh.*--cron'; then
+            acme_sh_cron_present="yes"
+        fi
+        if [[ -f "${ssl_update_file}" ]] && [[ $(crontab -l 2>/dev/null | grep -Fc -- "${ssl_update_file}") == "1" ]]; then
             echo
-            log_echo "${Warning} ${GreenBG} $(gettext "新版本已自动设置证书自动更新") ${Font}"
-            log_echo "${Warning} ${GreenBG} $(gettext "老版本请及时删除 废弃的 改版证书自动更新")! ${Font}"
-            log_echo "${GreenBG} $(gettext "已设置改版证书自动更新") ${Font}"
-            log_echo "${GreenBG} $(gettext "是否需要删除改版证书自动更新 (请删除)") [${Red}Y${Font}${GreenBG}/N]? ${Font}"
-            read -r remove_acme_cron_update_fq
-            case $remove_acme_cron_update_fq in
-            [nN][oO] | [nN]) ;;
-            *)
-                sed -i "\|${ssl_update_file}|d" "${crontab_file}"
-                rm -rf "${ssl_update_file}"
-                judge -r "$(gettext "删除改版证书自动更新")"
-                ;;
-            esac
+            if [[ "${acme_sh_cron_present}" != "yes" ]]; then
+                # Never leave the certificate with no renewal source: keep the
+                # old cron and say why instead of asking a question whose "yes"
+                # would delete the only scheduler.
+                log_echo "${Warning} ${RedBG} $(gettext "未找到 acme.sh 的续期调度, 已保留原有调度") ${Font}"
+                log_echo "${Info} ${Green} $(gettext "不能删成没人接的状态; 请先修复 acme.sh 调度再清理旧 cron") ${Font}"
+                judge -r "$(gettext "保留原有证书自动更新")"
+            else
+                log_echo "${Warning} ${GreenBG} $(gettext "已找到 acme.sh 续期调度, 删除旧调度后仍会续期") ${Font}"
+                log_echo "${GreenBG} $(gettext "是否需要删除改版证书自动更新 (请删除)") [${Red}Y${Font}${GreenBG}/N]? ${Font}"
+                read -r remove_acme_cron_update_fq
+                case $remove_acme_cron_update_fq in
+                [nN][oO] | [nN]) ;;
+                *)
+                    sed -i "\|${ssl_update_file}|d" "${crontab_file}"
+                    rm -rf "${ssl_update_file}"
+                    judge -r "$(gettext "删除改版证书自动更新")"
+                    ;;
+                esac
+            fi
         else
             echo
-            log_echo "${OK} ${GreenBG} $(gettext "新版本已自动设置证书自动更新") ${Font}"
+            if [[ "${acme_sh_cron_present}" == "yes" ]]; then
+                log_echo "${OK} ${GreenBG} $(gettext "acme.sh 续期调度已存在, 证书到期前会自动续期") ${Font}"
+            else
+                log_echo "${Warning} ${YellowBG} $(gettext "未检测到任何证书续期调度, 请检查证书续期配置") ${Font}"
+            fi
         fi
     else
         log_echo "${Error} ${RedBG} $(gettext "当前模式不支持此操作")! ${Font}"
     fi
 }
 
+# One line per scheduler that can actually renew the certificate. Three places
+# are checked because acme.sh writes to any of them depending on the host: the
+# root crontab, /etc/cron.d when no crontab binary exists, or a systemd timer.
+cert_renewal_scheduler_entries() {
+    local cron f unit
+    cron=$(crontab -l 2>/dev/null || true)
+    printf '%s\n' "${cron}" | grep -E 'acme\.sh.*--cron' | sed 's/^/acme.sh: /' || true
+    printf '%s\n' "${cron}" | grep -F -- "${ssl_update_file}" | sed 's/^/ssl_update: /' || true
+    for f in /etc/cron.d/*; do
+        [[ -f "${f}" ]] || continue
+        if grep -qE 'acme\.sh.*--cron' "${f}" 2>/dev/null; then
+            printf '%s\n' "acme.sh: ${f}"
+        fi
+    done
+    for unit in acme.sh.timer idleleo-schedule.timer; do
+        [[ -f "/etc/systemd/system/${unit}" ]] || continue
+        if systemctl is-active --quiet "${unit}" 2>/dev/null; then
+            printf '%s\n' "${unit}: active"
+        fi
+    done
+}
+
+# acme.sh renews once the certificate is older than Le_RenewalDays. The
+# Let's Encrypt lifetime is 90 days, so <=60 leaves at least the last 30 days.
+cert_renewal_window_ok() {
+    local kind=$1 conf="" renewal=""
+    case "${kind}" in
+    idleleo-schedule.timer)
+        # schedule.CertRenewWindow is 30 days in the Go manager.
+        return 0
+        ;;
+    acme.sh.timer)
+        # acme.sh's own timer runs --cron daily; renewal happens at Le_RenewalDays.
+        return 0
+        ;;
+    acme.sh)
+        conf="$HOME/.acme.sh/${domain}_ecc/${domain}.conf"
+        [[ -f "${conf}" ]] || conf="$HOME/.acme.sh/${domain}/${domain}.conf"
+        [[ -f "${conf}" ]] || return 1
+        renewal=$(sed -n 's/^Le_RenewalDays=//p' "${conf}" | tr -d '"' | head -n1)
+        renewal="${renewal:-60}"
+        [[ "${renewal}" =~ ^[0-9]+$ ]] && ((renewal <= 60))
+        ;;
+    ssl_update)
+        [[ -f "${ssl_update_file}" ]] || return 1
+        grep -qE 'xray cert renew|acme\.sh.*--cron' "${ssl_update_file}" 2>/dev/null
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+# Exactly one scheduler must be able to renew the certificate. Zero is a hard
+# failure when this run issued the certificate; more than one is redundant but
+# not a reason to tear down a working install.
+assert_cert_renewal_scheduler() {
+    local entries count kind
+    entries=$(cert_renewal_scheduler_entries)
+    count=$(printf '%s\n' "${entries}" | grep -c . || true)
+    if [[ "${count}" -eq 0 ]]; then
+        log_echo "${Error} ${RedBG} $(gettext "证书续期断言失败: 没有找到任何续期调度") ${Font}"
+        return 1
+    fi
+    if [[ "${count}" -gt 1 ]]; then
+        log_echo "${Warning} ${YellowBG} $(gettext "证书续期断言: 存在多条续期调度, 请清理重复项") ${Font}"
+        printf '%s\n' "${entries}"
+        return 0
+    fi
+    kind=${entries%%:*}
+    if ! cert_renewal_window_ok "${kind}"; then
+        log_echo "${Error} ${RedBG} $(gettext "证书续期断言失败: 未确认会在到期前 30 天内触发") ${Font}"
+        log_echo "  ${entries}"
+        return 1
+    fi
+    log_echo "${OK} ${GreenBG} $(gettext "证书续期断言通过") ${Font}: ${entries}"
+}
+
 check_cert_status() {
     if [[ ${tls_mode} == "TLS" ]]; then
         host="$(info_extraction host)"
-        local _cer_file="" _issued_epoch="" _notafter_epoch=""
-        if acme_legacy_enabled; then
+        local _cer_file="" _issued_epoch="" _notafter_epoch="" _legacy_cer="no"
+        if acme_legacy_enabled &&
+            [[ -f "$HOME/.acme.sh/${host}_ecc/${host}.cer" && -f "$HOME/.acme.sh/${host}_ecc/${host}.key" ]]; then
             _cer_file="$HOME/.acme.sh/${host}_ecc/${host}.cer"
-            [[ -f "$HOME/.acme.sh/${host}_ecc/${host}.key" ]] || _cer_file=""
+            _legacy_cer="yes"
         else
             _cer_file="${ssl_chainpath}/xray.crt"
             [[ -f "${ssl_chainpath}/xray.key" ]] || _cer_file=""
         fi
         if [[ -n "${_cer_file}" && -f "${_cer_file}" ]]; then
             currentTime=$(date +%s)
-            if acme_legacy_enabled; then
+            if [[ "${_legacy_cer}" == "yes" ]]; then
                 modifyTime=$(stat -c %Y "${_cer_file}" 2>/dev/null)
                 _issued_epoch="${modifyTime}"
                 ((days = (currentTime - modifyTime) / 86400))
@@ -12660,6 +12795,16 @@ install_xray_ws_tls() {
     acme_cron_update
     auto_update || return 1
     service_restart || return 1
+    # A certificate issued by this run must have a scheduler that renews it
+    # before expiry. A kept certificate is only reported: the operator may own
+    # its renewal elsewhere.
+    if [[ "${cert_issued_this_run}" == "yes" ]]; then
+        assert_cert_renewal_scheduler || return 1
+    else
+        if ! assert_cert_renewal_scheduler; then
+            log_echo "${Warning} ${YellowBG} $(gettext "本次沿用已有证书, 安装器不强制接管其续期; 请确认到期前会有人续期") ${Font}"
+        fi
+    fi
     # The native schedule only replaces the external updater once the service
     # is confirmed healthy; a user-written cron entry is never touched.
     geodata_legacy_cron_disable || true

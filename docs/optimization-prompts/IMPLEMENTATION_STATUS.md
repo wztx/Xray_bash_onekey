@@ -155,8 +155,20 @@
 1. 真实 Linux 运行时行为（systemd、logrotate、acme.sh 真实续签）尚未实机验证。
 2. 新建 None 模式默认仅监听回环后，若用户需要公网可达需显式指定地址（向导或 `WS_BACKEND_LISTEN_ADDR`）；
    分享链接仍按公网地址生成，仅监听回环时会不可直连——已在安装完成信息中明确提示。
-3. `--reloadcmd` 去掉服务重启后，若用户只依赖 acme.sh 自身定时任务（未使用本项目的
-   `ssl_update.sh` cron）续签，服务不会自动重启；本项目的 TLS 安装始终会写入 `ssl_update.sh` cron。
+3. 证书续期调度按两条路径区分，不能一概而论：
+   - **acme.sh 路径**（纯 Bash 安装的唯一可用路径；显式 `IDLELEO_ACME_LEGACY=1`，或检测不到 Go 入口时自动回退并在输出中说明）：
+     续期由 acme.sh 官方安装器自己写入 root crontab 的 `--cron` 负责，`--installcert --reloadcmd`
+     在续期后重装证书并重启 Nginx/Xray。**本项目不再写 `ssl_update.sh` cron，全新安装也不会下发该脚本**；
+     `ssl_update.sh` 只存在于旧版本升级上来的机器。
+   - **native lego 路径**（仅当 `idleleo` 解析为 Go 二进制时）：续期由 `idleleo-schedule.timer` 负责
+     （1 小时检查、30 天窗口）。纯 Bash 机器没有 Go 入口，不会走这条路径。
+   - `acme_cron_update()` 删除旧 `ssl_update.sh` cron 前会先确认 acme.sh 的 `--cron` 行存在；
+     不存在则保留旧 cron 并告警，避免出现“删完没人接”。
+   - 检测续期调度时同时查三处：root `crontab -l`、`/etc/cron.d/*`（无 `crontab` 命令时 acme.sh
+     会写到这里）、`systemd` 的 `acme.sh.timer` / `idleleo-schedule.timer`；续期窗口按
+     `Le_RenewalDays<=60`（90 天证书，留出最后 30 天）或 timer 的 30 天窗口判定。
+   - TLS 安装完成时断言续期调度：**零条失败**（本次签发了证书却没有续期来源）；**多条只告警不中断**
+     （已装好的机器不应因为多一条遗留 cron 被拆掉，输出会列出全部条目供人工清理）。
 4. 纯中转角色（阶段 02）尚未实现，证书路径对纯中转的跳过逻辑留待阶段 02 处理。
 
 ### 本阶段提交

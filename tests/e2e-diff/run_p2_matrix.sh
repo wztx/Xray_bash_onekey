@@ -134,6 +134,19 @@ docker run --rm -v "$WORK/seed:/seed" "$IMAGE_TAG" bash -c \
     log "FATAL: certificate generation failed"; exit 2
 }
 
+# OPS-21 needs geoip.dat/geosite.dat even when the environment has no egress.
+# Seed them from a cache when one exists; the driver copies them into the
+# install and the apply path then proves the missing-file refusal is not
+# silently replaced by a download.
+GEO_CACHE="${E2E_GEO_DIR:-$HOME/.cache/xray-audit/share/xray-bin}"
+mkdir -p "$WORK/seed/geo"
+for name in geoip.dat geosite.dat; do
+    if [[ -f "$GEO_CACHE/$name" ]]; then
+        cp "$GEO_CACHE/$name" "$WORK/seed/geo/$name"
+        log "seeded_geo=$name sha256=$(host_sha256 "$WORK/seed/geo/$name")"
+    fi
+done
+
 python3 - "$SUITE/matrix.json" >"$EVID/run.json" <<PY
 import json
 matrix = json.load(open("$SUITE/matrix.json"))
@@ -718,6 +731,142 @@ ops19_job() {
     docker network rm "$net" >/dev/null 2>&1 || true
 
     log "[$oid] verdict=$(ops19_verdict "$base")"
+}
+
+# --- traffic-block ops (OPS-21) -------------------------------------------
+# Both sides are observed on a live install: a real Reality client sends the
+# control and the blocked targets through the proxy. PASS needs the control
+# side to keep working (example.com 200 + marker), each blocked type refused
+# quickly, and on Go also the post-`config edit` routing comparison.
+OPS21_BASH_CHECKS="baselineControl applyRcZero rulesAdded fallbackDirect noCatchAllBlocked controlAfterApply adsBlocked privateBlocked countryBlocked offRcZero offRestored controlAfterOff"
+OPS21_GO_CHECKS="$OPS21_BASH_CHECKS customListConfigured customRuleApplied customListKept customRuleRemoved editRcZero editUuidApplied editRoutingIdentical editOwnedRulesKept editUserRuleKept editBlockReported controlAfterEdit adsBlockedAfterEdit"
+
+ops21_verdict() {
+    local base=$1
+    python3 - "$base" "$OPS21_BASH_CHECKS" "$OPS21_GO_CHECKS" <<'PY'
+import json, os, sys
+
+base, bash_required, go_required = sys.argv[1], sys.argv[2].split(), sys.argv[3].split()
+sides = {"bash": os.path.join(base, "bash", "block-bash", "result.json"),
+         "go": os.path.join(base, "go", "block-go", "result.json")}
+required = {"bash": bash_required, "go": go_required}
+
+results, harness, reasons = {}, [], []
+for side, path in sides.items():
+    harness_path = os.path.join(base, side, "harness.json")
+    if os.path.exists(harness_path):
+        try:
+            harness.append("%s: %s" % (side, json.load(open(harness_path)).get("reason", "harness error")))
+        except (OSError, json.JSONDecodeError):
+            harness.append("%s: harness.json is unreadable" % side)
+        continue
+    try:
+        with open(path, encoding="utf-8") as fh:
+            results[side] = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        harness.append("missing %s result.json" % side)
+        continue
+    checks = {c["name"]: c["ok"] for c in results[side].get("checks", [])}
+    missing = [name for name in required[side] if name not in checks]
+    if missing:
+        harness.append("%s is missing checks: %s" % (side, ", ".join(missing)))
+    # A control probe that never reaches the origin proves nothing: every
+    # "blocked" outcome would then be indistinguishable from a broken tunnel.
+    if checks.get("baselineControl") is not True:
+        harness.append("%s never reached the control origin before blocking" % side)
+    failed = [name for name, ok in checks.items() if not ok and name != "baselineControl"]
+    if failed:
+        reasons.append("%s failed: %s" % (side, ", ".join(sorted(failed))))
+
+if harness:
+    verdict = "HARNESS-ERROR"
+else:
+    verdict = "BLOCKER" if reasons else "PASS"
+
+def brief(side):
+    checks = {c["name"]: c["ok"] for c in (results.get(side) or {}).get("checks", [])}
+    side_harness = [r for r in harness if r.startswith(side + ":")]
+    status = (results.get(side) or {}).get("status")
+    if side_harness:
+        status = "HARNESS-ERROR"
+    return {"status": status,
+            "reasons": side_harness,
+            "failed": (results.get(side) or {}).get("failed", []),
+            "checks": checks}
+
+report = {
+    "id": "OPS-21",
+    "verdict": verdict,
+    "reasons": harness + reasons,
+    "sides": {side: brief(side) for side in sides},
+}
+with open(os.path.join(base, "ops.json"), "w", encoding="utf-8") as fh:
+    json.dump(report, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+print(verdict)
+PY
+}
+
+ops21_egress() {
+    docker run --rm "$IMAGE_TAG" sh -c 'curl -4 -fsS --max-time 6 ip.me >/dev/null 2>&1'
+}
+
+ops21_job() {
+    local oid=OPS-21
+    local net="e2e-$RUN_ID-$oid"
+    local base="$EVID/$oid" bdir="$EVID/$oid/bash" gdir="$EVID/$oid/go"
+    mkdir -p "$bdir" "$gdir"
+    docker network create "$net" >/dev/null 2>&1 || true
+    log "[$oid] start"
+
+    # The control target is served from inside each server container: this host
+    # has no egress and cross-container traffic is unreliable. The driver binds
+    # 11.0.0.2/32 to lo there — a public (DoD) range on purpose, so geoip:private
+    # and geoip:cn never match it. Blocked targets match routing rules before any
+    # dial, so they need no origin either.
+    local control_ip=11.0.0.2
+
+    # ---- bash side: M1 reality install, then traffic_blocker.sh ----
+    # The bash installer needs egress twice (public-IP lookup and GeoData), so
+    # a network-less host is recorded as HARNESS-ERROR instead of a fake FAIL.
+    local bserver="e2e-$RUN_ID-$oid-bash"
+    if ! ops21_egress; then
+        log "[$oid] bash skipped: container network has no egress"
+        python3 - "$bdir/harness.json" <<'PY'
+import json, sys
+json.dump({"status": "harness-error",
+           "reason": "container network has no egress; the bash installer cannot resolve its public IP or fetch geoip.dat/geosite.dat"},
+          open(sys.argv[1], "w"), indent=2)
+PY
+    elif start_server "$bserver" "$oid" bash "$bdir" "$net"; then
+        run_bash_round M1 "$net" "$bserver" "$bdir" 1 "" reality "-2" "" "1"
+        docker exec -e E2E_OUT=/out -e E2E_CONTROL_HOST="$control_ip" -e E2E_CONTROL_PORT=80 \
+            "$bserver" bash /src/tests/e2e-diff/drivers/ops21_block.sh bash \
+            >"$bdir/block.out" 2>&1
+        echo $? >"$bdir/block.rc"
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$bdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$bserver" >/dev/null 2>&1 || true
+
+    # ---- go side: M1-equivalent install, then idleleo xray block ----
+    local gserver="e2e-$RUN_ID-$oid-go"
+    if start_server "$gserver" "$oid" go "$gdir" "$net"; then
+        local -a iargv=(xray install --binary /usr/local/bin/xray --mode reality
+                        --domain "$TARGET" --target "$TARGET" --port 443 --container)
+        run_go_round "$oid" "$gserver" "$gdir" 1 "" reality "${iargv[@]}"
+        docker exec -e E2E_OUT=/out -e E2E_CONTROL_HOST="$control_ip" -e E2E_CONTROL_PORT=80 \
+            -e E2E_BLOCK_NO_PROBE=1 \
+            "$gserver" bash /src/tests/e2e-diff/drivers/ops21_block.sh go \
+            >"$gdir/block.out" 2>&1
+        echo $? >"$gdir/block.rc"
+    else
+        echo '{"status":"harness-error","reason":"container start failed"}' >"$gdir/harness.json"
+    fi
+    [[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$gserver" >/dev/null 2>&1 || true
+    docker network rm "$net" >/dev/null 2>&1 || true
+
+    log "[$oid] verdict=$(ops21_verdict "$base")"
 }
 
 # --- load-balancer ops (OPS-09 / OPS-31) ----------------------------------
@@ -1485,6 +1634,7 @@ ops32_job() {
 ops_job() {
     case $1 in
         OPS-19) ops19_job ;;
+        OPS-21) ops21_job ;;
         OPS-09) ops_balance_job OPS-09 ws wsServers tls ;;
         OPS-31) ops_balance_job OPS-31 reality realityServers reality ;;
         OPS-32) ops32_job ;;
@@ -1529,12 +1679,12 @@ if (( ${#EIDS[@]} > 0 )); then
     wait
 fi
 
-# OPS scenarios run after E*. OPS-19 (Fail2ban), OPS-09 (Nginx 负载均衡),
-# OPS-31 (Reality 负载均衡) and OPS-32 (后端故障摘除) have real execution paths;
-# every other OPS row is reported NOT-RUN rather than silently inheriting its
-# declared verdict.
+# OPS scenarios run after E*. OPS-19 (Fail2ban), OPS-21 (流量阻断),
+# OPS-09 (Nginx 负载均衡), OPS-31 (Reality 负载均衡) and OPS-32 (后端故障摘除)
+# have real execution paths; every other OPS row is reported NOT-RUN rather than
+# silently inheriting its declared verdict.
 OIDS=()
-for oid in OPS-19 OPS-09 OPS-31 OPS-32; do
+for oid in OPS-19 OPS-21 OPS-09 OPS-31 OPS-32; do
     if [[ -z "$ONLY" ]]; then
         OIDS+=("$oid")
     else

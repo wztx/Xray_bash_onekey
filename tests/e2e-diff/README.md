@@ -54,7 +54,7 @@ P0 的 run-id 为 `20261113-1721-fee7a68`。
 
 `expected_diffs.json`：
 
-- 分类以外仅剩 2 条登记：ED-003 流量阻断（OPS-21，`rejected`，转 C2）、ED-005 Rill AI（OPS-29，`approved`）；ED-001/ED-002/ED-004 已随实现落地删除。
+- 分类以外仅剩 1 条登记：ED-005 Rill AI（OPS-29，`approved`）；ED-001/ED-002/ED-003/ED-004 已随实现落地删除（ED-003 随 C2 流量阻断落地）。
 - 每条必须有 `owner` + `approved_by` + `expires`；当前全部为空、`status: pending`。
 - `pending` / 过期 / 未知 / 通配（`*`）一律按 `DIFF-BLOCKER`，不是豁免。
 

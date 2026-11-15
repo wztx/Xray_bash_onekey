@@ -89,6 +89,10 @@ type EditReport struct {
 	FailurePoint         string                `json:"failurePoint,omitempty"`
 	UpstreamSHA256       string                `json:"upstreamSha256,omitempty"`
 	UpstreamUnchanged    bool                  `json:"upstreamUnchanged"`
+	// BlockPreserved/BlockRuleCount report that traffic blocking was reapplied
+	// and how many owned rules came back.
+	BlockPreserved bool `json:"blockPreserved,omitempty"`
+	BlockRuleCount int  `json:"blockRuleCount,omitempty"`
 }
 
 // RelayEditSpec is one `xray config edit` request against a managed relay.
@@ -113,9 +117,10 @@ type RelayEditReport struct {
 }
 
 // runXrayTest validates a candidate file with the installed binary. It is a
-// seam so sandbox tests can inject a verdict without a real Xray.
-var runXrayTest = func(ctx context.Context, bin, candidate string) error {
-	res, err := host.Run(ctx, host.ExecSpec{Path: bin, Args: []string{"-test", "-config", candidate}, Timeout: 60 * time.Second})
+// seam so sandbox tests can inject a verdict without a real Xray. env carries
+// XRAY_LOCATION_ASSET when the candidate uses GeoData rules.
+var runXrayTest = func(ctx context.Context, bin, candidate string, env []string) error {
+	res, err := host.Run(ctx, host.ExecSpec{Path: bin, Args: []string{"-test", "-config", candidate}, Env: env, Timeout: 60 * time.Second})
 	if err != nil {
 		return err
 	}
@@ -165,6 +170,13 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		base.LinkFingerprint = meta.ShareLinkOnly.Fingerprint
 		base.LinkSpiderX = meta.ShareLinkOnly.SpiderX
 	}
+	// Traffic blocking lives outside the generator. Loading it here is what
+	// keeps `config edit` from silently deleting the block rules.
+	if blockState, ok, blockErr := loadBlockState(paths); blockErr != nil {
+		return EditReport{}, blockErr
+	} else if ok {
+		base.RoutingBlock = &blockState
+	}
 	g, res, err := xraycfg.EditRuntime(raw, base, spec.Request)
 	if err != nil {
 		return EditReport{}, err
@@ -178,6 +190,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		ShortIDs: res.ShortIDs, ShortIDLinks: res.ShortIDLinks,
 		OldShareURI: res.OldShareURI, LinkFingerprint: res.LinkFingerprint, LinkSpiderX: res.LinkSpiderX,
 		PrivateKeyRotated: res.PrivateKeyRotated,
+		BlockPreserved:    res.BlockPreserved, BlockRuleCount: res.BlockRuleCount,
 	}
 	if spec.Request.ListShortIDs {
 		// Read-only: the runtime config and the front are untouched.
@@ -247,7 +260,7 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	if err := os.Chmod(tmpName, 0o600); err != nil {
 		return report, err
 	}
-	if err := runXrayTest(ctx, bin, tmpName); err != nil {
+	if err := runXrayTest(ctx, bin, tmpName, geodataEnv(paths.Root)); err != nil {
 		return report, fmt.Errorf("%w; configuration was not changed", err)
 	}
 

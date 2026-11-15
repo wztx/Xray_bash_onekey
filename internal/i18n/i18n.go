@@ -49,6 +49,9 @@ var zh = map[string]string{
                        --fp/--spx 仅改分享链接，不改服务端配置、不重启
   xray user list|add|remove
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
+  xray user uuid --email E --new-uuid U [--inbound N]
+                       改单个用户的 UUID；命中多个 inbound 时一次事务全改；
+                       会重启 Xray，所有用户会话都会秒级中断；--dry-run 只预览
   xray logs clean|rotate enable|disable
                        截断 Xray/Nginx 日志；安装或移除 logrotate 自动轮转
   xray balance list --upstream reality|ws|grpc|xhttp
@@ -57,6 +60,16 @@ var zh = map[string]string{
                        新增一后端文件：nginx -t 失败回滚；默认不做存活探测
   xray balance remove --upstream NAME --host HOST[:PORT]
                        删除一后端文件；拒绝删除最后一个后端
+  xray block status    只读查看阻断开关、已写规则数与 drift
+  xray block apply|off [--yes] [--dry-run]
+                       按状态文件重建/移除 Xray 路由层阻断规则；apply 前做
+                       geo 检查与 xray -test，重启后探测失败自动回滚
+  xray block ads|private-ip|bittorrent enable|disable
+                       开关内置三类；只改状态文件，apply 后生效
+  xray block country add|remove|list [cc ...]
+                       增删国家码（两位字母，逗号分隔可一次多个）
+  xray block custom add|remove|enable|disable|list --kind domain|ip
+                       [--value V] 自定义域名/IP 列表，单条增删，独立启停
   fail2ban status      只读查看各 jail 与当前封禁数
   fail2ban install     写入 sshd/nginx 五个 jail（不自动装包）
   fail2ban uninstall   只删 Idleleo 按 manifest 创建的文件
@@ -139,6 +152,10 @@ Commands:
                        link (no server config, no restart)
   xray user list|add|remove
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
+  xray user uuid --email E --new-uuid U [--inbound N]
+                       rotate one user's UUID; every inbound that carries it is
+                       rewritten in one transaction; restarts Xray, so all
+                       sessions drop for a few seconds; --dry-run previews only
   xray logs clean|rotate enable|disable
                        truncate Xray/Nginx logs; install or remove logrotate rotation
   xray balance list --upstream reality|ws|grpc|xhttp
@@ -147,6 +164,18 @@ Commands:
                        write one backend file; roll back if nginx -t fails; no probe by default
   xray balance remove --upstream NAME --host HOST[:PORT]
                        delete one backend file; refuses to remove the last backend
+  xray block status    read-only view of switches, owned rule count and drift
+  xray block apply|off [--yes] [--dry-run]
+                       rebuild/remove Xray routing-layer block rules; apply
+                       checks GeoData, runs xray -test and rolls back when the
+                       post-restart control probe fails
+  xray block ads|private-ip|bittorrent enable|disable
+                       toggle a built-in type; takes effect on block apply
+  xray block country add|remove|list [cc ...]
+                       add/remove two-letter country codes
+  xray block custom add|remove|enable|disable|list --kind domain|ip
+                       [--value V] custom domain/IP lists, one item per call,
+                       enabled independently from the built-in types
   fail2ban status      read-only jail list with current ban counts
   fail2ban install     write the five sshd/nginx jails (never installs the package)
   fail2ban uninstall   remove only the files Idleleo recorded in its manifest

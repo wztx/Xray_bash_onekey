@@ -56,6 +56,8 @@ func xrayCommand(ctx context.Context, opts Options, cfg config, a *app.App, args
 		return xrayLogs(ctx, opts, cfg, rest)
 	case "balance":
 		return xrayBalance(ctx, opts, cfg, rest)
+	case "block":
+		return xrayBlock(ctx, opts, cfg, rest)
 	default:
 		return usage(opts, cfg.lang, "help")
 	}

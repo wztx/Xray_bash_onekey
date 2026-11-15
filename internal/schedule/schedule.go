@@ -26,8 +26,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +33,7 @@ import (
 	"time"
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/acme"
+	"github.com/hello-yunshu/Xray_bash_onekey/internal/geodata"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/release"
 )
@@ -884,21 +883,17 @@ func short(sha string) string {
 }
 
 func geodataJob(ctx context.Context, root string, cfg Config, at string) JobResult {
-	base := strings.TrimRight(cfg.GeodataURL, "/")
-	assets := []string{"geoip.dat", "geosite.dat"}
-	payloads := make(map[string][]byte, len(assets))
-	for _, asset := range assets {
-		b, err := fetch(ctx, base+"/"+asset)
-		if err != nil {
-			return JobResult{Job: "geodata-refresh", Result: "failed", At: at, Detail: fmt.Sprintf("%s: %v", asset, err)}
-		}
-		payloads[asset] = b
+	// The downloader verifies the release .sha256sum before anything is
+	// written, so a truncated or tampered asset keeps the previous file.
+	payloads, err := geodata.Fetch(ctx, cfg.GeodataURL)
+	if err != nil {
+		return JobResult{Job: "geodata-refresh", Result: "failed", At: at, Detail: err.Error()}
 	}
 	dir := path(root, cfg.GeodataDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return JobResult{Job: "geodata-refresh", Result: "failed", At: at, Detail: err.Error()}
 	}
-	for _, asset := range assets {
+	for _, asset := range geodata.Assets {
 		if err := writeAtomic(filepath.Join(dir, asset), payloads[asset], 0o644); err != nil {
 			return JobResult{Job: "geodata-refresh", Result: "failed", At: at, Detail: err.Error()}
 		}
@@ -925,39 +920,6 @@ func geodataJob(ctx context.Context, root string, cfg Config, at string) JobResu
 		detail += "; sandbox root, no service reload"
 	}
 	return JobResult{Job: "geodata-refresh", Result: "ok", At: at, Detail: detail}
-}
-
-var geodataClient = &http.Client{Timeout: 120 * time.Second}
-
-const maxGeodataBytes = 64 << 20
-
-func fetch(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := geodataClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("origin returned HTTP %d", resp.StatusCode)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxGeodataBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("download interrupted: %w", err)
-	}
-	if len(b) == 0 {
-		return nil, errors.New("origin returned an empty asset")
-	}
-	if len(b) > maxGeodataBytes {
-		return nil, errors.New("origin asset is larger than the 64MiB limit")
-	}
-	if b[0] == '<' || b[0] == '{' {
-		return nil, errors.New("origin returned HTML/JSON instead of a GeoData asset")
-	}
-	return b, nil
 }
 
 func statsJob(ctx context.Context, root, at string) JobResult {

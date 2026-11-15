@@ -516,26 +516,6 @@
       ]
     },
     {
-      "id": "ED-003",
-      "title": "流量阻断规则",
-      "layer": "L3",
-      "scenarios": [
-        "OPS-21"
-      ],
-      "paths": [
-        "nftables/iptables ruleset"
-      ],
-      "decision": "fix-go",
-      "rejected_reason": "Go 无任何等价入口，用户迁移后等于丢功能。",
-      "backlog": "C2",
-      "owner": "hello-yunshu",
-      "approved_by": "release-gate",
-      "expires": "2027-03-31",
-      "status": "rejected",
-      "approval_note": "不予批准：应改 Go，转入第二梯队待办。",
-      "review_url": "https://github.com/hello-yunshu/Xray_bash_onekey/pulls?q=is%3Apr+head%3Adevelop%2Fgo-native"
-    },
-    {
       "id": "ED-005",
       "title": "rill agent 输出文本",
       "layer": "L5",

@@ -373,7 +373,7 @@ func Install(ctx context.Context, spec InstallSpec) (Report, error) {
 	if err := os.Chmod(tmpName, 0o600); err != nil {
 		return fail(err)
 	}
-	ver, err := host.Run(ctx, host.ExecSpec{Path: bin, Args: []string{"-test", "-config", tmpName}})
+	ver, err := host.Run(ctx, host.ExecSpec{Path: bin, Args: []string{"-test", "-config", tmpName}, Env: geodataEnv(paths.Root)})
 	if err != nil {
 		return fail(err)
 	}
@@ -1066,14 +1066,26 @@ func queryService(ctx context.Context, args ...string) string {
 }
 
 var waitActive = func(ctx context.Context) string {
+	state := ""
 	for i := 0; i < 20; i++ {
-		state := serviceQuery(ctx, "is-active", "xray")
-		if state == "active" || state == "failed" {
+		state = serviceQuery(ctx, "is-active", "xray")
+		if state == "failed" {
 			return state
+		}
+		if state == "active" {
+			// systemd marks a unit active as soon as ExecStart is forked, so a
+			// service that dies on a config error still reports "active" for one
+			// poll. Require a settled second observation before declaring success,
+			// otherwise a broken restart is reported as applied.
+			time.Sleep(400 * time.Millisecond)
+			if confirm := serviceQuery(ctx, "is-active", "xray"); confirm == "active" {
+				return confirm
+			}
+			continue
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	return serviceQuery(ctx, "is-active", "xray")
+	return state
 }
 
 func copyExecutable(src, dst string) error {

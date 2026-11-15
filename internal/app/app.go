@@ -199,7 +199,7 @@ func (a *App) ChangePort(ctx context.Context, override string, inbound, port int
 	req := change.Request{
 		Target:    path,
 		Mutate:    func(raw []byte) ([]byte, error) { return change.SetInboundPort(raw, inbound, port) },
-		Validator: runtime.XrayValidator{Path: validatorPath},
+		Validator: runtime.XrayValidator{Path: validatorPath, AssetDir: a.Paths.GeodataDir()},
 		Service:   runtime.CommandService{Path: servicePath},
 		Journal:   change.Journal{Path: a.Paths.JournalFile()},
 		LockPath:  a.Paths.LockFile(),
@@ -249,7 +249,7 @@ func (a *App) ChangeUser(ctx context.Context, override string, inbound int, add 
 	req := change.Request{
 		Target:    path,
 		Mutate:    mutate,
-		Validator: runtime.XrayValidator{Path: validatorPath},
+		Validator: runtime.XrayValidator{Path: validatorPath, AssetDir: a.Paths.GeodataDir()},
 		Service:   runtime.CommandService{Path: servicePath},
 		Journal:   change.Journal{Path: a.Paths.JournalFile()},
 		LockPath:  a.Paths.LockFile(),

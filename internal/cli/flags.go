@@ -123,6 +123,8 @@ var commandFlags = map[string]flagSpec{
 		"short-id-auto", "short-id-list", "rotate-reality-private-key"),
 	"xray logs clean":  specOf(nil, "yes", "container"),
 	"xray logs rotate": specOf(nil, "container"),
+	"xray block": specOf([]string{"path", "kind", "value", "geodata-url"},
+		"yes", "dry-run", "no-restart", "no-probe", "container"),
 
 	"fail2ban status":       specOf(nil),
 	"fail2ban install":      specOf(nil, "container", "no-nginx-no-host", "no-nginx-tls-error"),
@@ -139,6 +141,9 @@ var commandFlags = map[string]flagSpec{
 	"xray user remove": specOf(
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "flow", "short-id", "level", "path", "fault"},
 		"container"),
+	"xray user uuid": specOf(
+		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "new-uuid", "path", "fault"},
+		"container", "dry-run", "yes"),
 	"xray cert issue": specOf(
 		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-key", "state", "renew-before", "ca-cert", "email", "reload-command"},
 		"production", "insecure-skip-verify", "force"),

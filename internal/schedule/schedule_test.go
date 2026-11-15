@@ -5,11 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net/http"
@@ -115,15 +117,27 @@ func TestGeodataInterruptedDownloadKeepsOldAssets(t *testing.T) {
 
 func TestGeodataDownloadReplacesBothAssetsAtomically(t *testing.T) {
 	root := sandbox(t)
+	assets := map[string]string{"geoip.dat": "GEOIP-NEW", "geosite.dat": "GEOSITE-NEW"}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.Contains(r.URL.Path, "geoip"):
-			_, _ = w.Write([]byte("GEOIP-NEW"))
-		case strings.Contains(r.URL.Path, "geosite"):
-			_, _ = w.Write([]byte("GEOSITE-NEW"))
-		default:
-			w.WriteHeader(http.StatusNotFound)
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if strings.HasSuffix(name, ".sha256sum") {
+			asset := strings.TrimSuffix(name, ".sha256sum")
+			body, ok := assets[asset]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			sum := sha256.Sum256([]byte(body))
+			// The downloader must verify the release checksum, so the test
+			// origin serves a real one.
+			_, _ = fmt.Fprintf(w, "%x  %s\n", sum, asset)
+			return
 		}
+		if body, ok := assets[name]; ok {
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer ts.Close()
 	write(t, root, ConfigRel, `{"schemaVersion":1,"intervalSeconds":3600,"jobs":["geodata-refresh"],"geodataUrl":"`+ts.URL+`"}`, 0o600)

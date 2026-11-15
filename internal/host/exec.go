@@ -24,8 +24,11 @@ const FixedPATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 // ExecSpec is a shell-free command description.
 type ExecSpec struct {
-	Path    string
-	Args    []string
+	Path string
+	Args []string
+	// Env adds KEY=VALUE entries on top of the fixed environment. It is used
+	// for XRAY_LOCATION_ASSET, which Xray needs to find the GeoData files.
+	Env     []string
 	Timeout time.Duration
 }
 
@@ -89,12 +92,12 @@ func Run(ctx context.Context, spec ExecSpec) (ExecResult, error) {
 	// the timeout fires. Without it, a child that keeps stdout open can defeat
 	// the timeout entirely.
 	cmd.WaitDelay = time.Second
-	cmd.Env = []string{
+	cmd.Env = append([]string{
 		"PATH=" + FixedPATH,
 		"HOME=/",
 		"LANG=C.UTF-8",
 		"LC_ALL=C.UTF-8",
-	}
+	}, spec.Env...)
 	var out, errOut limitedBuffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

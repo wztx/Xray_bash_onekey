@@ -96,7 +96,7 @@ func TestTLSPathsReadsTheLivePair(t *testing.T) {
 	}
 }
 
-func stubXrayTest(t *testing.T, fn func(ctx context.Context, bin, candidate string) error) {
+func stubXrayTest(t *testing.T, fn func(ctx context.Context, bin, candidate string, env []string) error) {
 	t.Helper()
 	old := runXrayTest
 	runXrayTest = fn
@@ -116,7 +116,7 @@ func stubEditService(t *testing.T, fn func(ctx context.Context, args ...string) 
 
 func TestEditConfigWritesCandidateAndBackup(t *testing.T) {
 	root, configPath, old := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	report, err := EditConfig(context.Background(), EditSpec{
 		Root: root, Request: xraycfg.EditRequest{Port: 8080}, NoRestart: true,
 	})
@@ -190,7 +190,7 @@ func TestEditRealityBalanceLeavesUpstreamTreeUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	report, err := EditConfig(context.Background(), EditSpec{
 		Root: root, Request: xraycfg.EditRequest{ShortIDAuto: true},
 		NoRestart: true, NoProbe: true,
@@ -212,7 +212,7 @@ func TestEditRealityBalanceLeavesUpstreamTreeUntouched(t *testing.T) {
 
 func TestEditConfigSelfCheckFailureWritesNothing(t *testing.T) {
 	root, configPath, old := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return errors.New("syntax error") })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return errors.New("syntax error") })
 	_, err := EditConfig(context.Background(), EditSpec{
 		Root: root, Request: xraycfg.EditRequest{Port: 8080}, NoRestart: true,
 	})
@@ -231,7 +231,7 @@ func TestEditConfigSelfCheckFailureWritesNothing(t *testing.T) {
 
 func TestEditConfigRefreshesInstallSnapshot(t *testing.T) {
 	root, _, _ := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	oldProbe := probeOrigin
 	probeOrigin = func(context.Context, string, string) error { return nil }
 	t.Cleanup(func() { probeOrigin = oldProbe })
@@ -309,7 +309,7 @@ func TestUpdateMetadataAfterEditKeepsLoadableTLSLabel(t *testing.T) {
 
 func TestEditConfigRestartFailureRollsBack(t *testing.T) {
 	root, configPath, old := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	restarts := 0
 	stubEditService(t, func(_ context.Context, args ...string) error {
 		if len(args) > 0 && args[0] == "restart" {
@@ -337,7 +337,7 @@ func TestEditConfigRestartFailureRollsBack(t *testing.T) {
 
 func TestEditConfigRestartsOnSuccess(t *testing.T) {
 	root, _, _ := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	stubEditService(t, func(context.Context, ...string) error { return nil })
 	if _, err := EditConfig(context.Background(), EditSpec{
 		Root: root, Request: xraycfg.EditRequest{UUID: "11111111-2222-3333-4444-555555555555"},

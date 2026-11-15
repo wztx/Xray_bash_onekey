@@ -112,6 +112,10 @@ type Spec struct {
 	// SkipPortProbe disables the pre-flight bind check. In-place edits set it
 	// because the running service legitimately owns the ports it preserves.
 	SkipPortProbe bool
+	// RoutingBlock is the traffic-block state that must survive regeneration.
+	// Nil means this install never applied blocking, so the edit keeps the old
+	// behaviour of refusing any routing change.
+	RoutingBlock *BlockState
 }
 
 // extraPort returns the operator-pinned port for an added transport, or zero

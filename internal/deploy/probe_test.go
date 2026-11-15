@@ -33,7 +33,7 @@ func stubProbe(t *testing.T, fn func(ctx context.Context, target, sni string) er
 
 func TestEditTargetProbesEffectiveOrigin(t *testing.T) {
 	root, configPath, old := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	var gotTarget, gotSNI string
 	stubProbe(t, func(_ context.Context, target, sni string) error {
 		gotTarget, gotSNI = target, sni
@@ -65,7 +65,7 @@ func TestEditTargetProbesEffectiveOrigin(t *testing.T) {
 
 func TestEditTargetProbeFailureWritesNothing(t *testing.T) {
 	root, configPath, old := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	stubProbe(t, func(context.Context, string, string) error {
 		return ErrOriginUnreachable
 	})
@@ -90,7 +90,7 @@ func TestEditTargetProbeFailureWritesNothing(t *testing.T) {
 
 func TestEditPortDoesNotProbeOrigin(t *testing.T) {
 	root, _, _ := editSandbox(t)
-	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	stubXrayTest(t, func(context.Context, string, string, []string) error { return nil })
 	calls := stubProbe(t, func(context.Context, string, string) error {
 		return errors.New("must not be called")
 	})

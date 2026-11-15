@@ -67,23 +67,32 @@ type inboundDef struct {
 
 // Spec describes one to-be-generated configuration.
 type Spec struct {
-	Mode             string
-	Transport        string
-	Port             int
-	PublicPort       int
-	Listen           string
-	Domain           string
-	CertFile         string
-	KeyFile          string
-	Target           string
-	ServerNames      []string
-	Path             string
-	ServiceName      string
-	UUID             string
-	Email            string
-	Flow             string
-	PrivateKey       string
-	ShortID          string
+	Mode        string
+	Transport   string
+	Port        int
+	PublicPort  int
+	Listen      string
+	Domain      string
+	CertFile    string
+	KeyFile     string
+	Target      string
+	ServerNames []string
+	Path        string
+	ServiceName string
+	UUID        string
+	Email       string
+	Flow        string
+	PrivateKey  string
+	ShortID     string
+	// ShortIDs is the explicit Reality accepted-sid list. A nil slice keeps the
+	// install behaviour (ShortID or a generated id); a non-nil empty slice
+	// deliberately emits "shortIds": [] and must only come from an edit.
+	ShortIDs []string
+	// LinkFingerprint/LinkSpiderX shape the share link and Clash proxy only.
+	// They never appear in the runtime config; the server keeps working with any
+	// client-side fingerprint or spiderX.
+	LinkFingerprint  string
+	LinkSpiderX      string
 	AllowNonLoopback bool
 	// BalanceRole is required by ModeRealityBalance: primary runs the Nginx
 	// stream front, secondary only serves the Reality backend.
@@ -149,6 +158,7 @@ type Generated struct {
 	Users      []UserView `json:"users"`
 	UUID       string     `json:"uuid"`
 	ShortID    string     `json:"shortId,omitempty"`
+	ShortIDs   []string   `json:"shortIds,omitempty"`
 	PrivateKey string     `json:"privateKey"`
 	PublicKey  string     `json:"publicKey"`
 	ServerName string     `json:"serverName,omitempty"`
@@ -311,6 +321,7 @@ func Generate(spec Spec) (Generated, error) {
 	serverName := ""
 	var realityTarget string
 	var privateKey, publicKey, shortID string
+	var shortIDs []string
 	if spec.Mode == ModeReality || spec.Mode == ModeRealityNginx || spec.Mode == ModeRealityBalance {
 		if len(spec.ServerNames) == 0 {
 			if spec.Domain == "" {
@@ -357,15 +368,27 @@ func Generate(spec Spec) (Generated, error) {
 		if err != nil {
 			return Generated{}, err
 		}
-		shortID = spec.ShortID
-		if shortID == "" {
-			shortID, err = NewShortID()
-			if err != nil {
-				return Generated{}, err
+		if spec.ShortIDs != nil {
+			shortIDs = append([]string{}, spec.ShortIDs...)
+		} else {
+			shortID = spec.ShortID
+			if shortID == "" {
+				shortID, err = NewShortID()
+				if err != nil {
+					return Generated{}, err
+				}
+			}
+			shortIDs = []string{shortID}
+		}
+		for _, id := range shortIDs {
+			if !validShortID(id) {
+				return Generated{}, fmt.Errorf("shortId must be 1-16 hex characters with even length (or empty)")
 			}
 		}
-		if !validShortID(shortID) {
-			return Generated{}, fmt.Errorf("shortId must be 1-16 hex characters with even length")
+		if len(shortIDs) > 0 {
+			shortID = shortIDs[0]
+		} else {
+			shortID = ""
 		}
 	} else {
 		if spec.Flow != "" {
@@ -407,10 +430,10 @@ func Generate(spec Spec) (Generated, error) {
 		return Generated{}, err
 	}
 	g.Warnings = append(g.Warnings, picker.warnings...)
-	config := buildConfig(spec, defs, serverName, realityTarget, privateKey, shortID)
+	config := buildConfig(spec, defs, serverName, realityTarget, privateKey, shortIDs)
 
 	g.Port, g.PublicPort, g.Listen = inboundPort, spec.PublicPort, spec.Listen
-	g.UUID, g.ShortID, g.PrivateKey, g.PublicKey = spec.UUID, shortID, privateKey, publicKey
+	g.UUID, g.ShortID, g.ShortIDs, g.PrivateKey, g.PublicKey = spec.UUID, shortID, shortIDs, privateKey, publicKey
 	g.ServerName, g.Target = serverName, realityTarget
 	g.Users = []UserView{{Index: 0, UUID: spec.UUID, Email: spec.Email, Flow: spec.Flow, Level: 0, Primary: true}}
 	g.Config = config
@@ -655,7 +678,7 @@ func buildInboundDefs(spec Spec, transport string, inboundPort int, picker *port
 	return defs, nil
 }
 
-func buildConfig(spec Spec, defs []inboundDef, serverName, target, privateKey, shortID string) []byte {
+func buildConfig(spec Spec, defs []inboundDef, serverName, target, privateKey string, shortIDs []string) []byte {
 	inbounds := make([]any, 0, len(defs))
 	tags := make([]any, 0, len(defs))
 	for _, def := range defs {
@@ -683,7 +706,7 @@ func buildConfig(spec Spec, defs []inboundDef, serverName, target, privateKey, s
 				"target":       target,
 				"serverNames":  spec.ServerNames,
 				"privateKey":   privateKey,
-				"shortIds":     []any{shortID},
+				"shortIds":     shortIDsAny(shortIDs),
 				"minClientVer": "1.0.0",
 			}
 		}
@@ -741,6 +764,25 @@ func buildConfig(spec Spec, defs []inboundDef, serverName, target, privateKey, s
 	return mustJSON(root)
 }
 
+// shortIDsAny renders the accepted-sid list without turning an explicit empty
+// list into JSON null: Xray needs an array so "shortIds": [] stays meaningful.
+func shortIDsAny(ids []string) []any {
+	out := make([]any, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id)
+	}
+	return out
+}
+
+// linkFingerprint is the link-only uTLS fingerprint. It has no server-side
+// meaning; Reality accepts any client fingerprint.
+func linkFingerprint(spec Spec) string {
+	if fp := strings.TrimSpace(spec.LinkFingerprint); fp != "" {
+		return fp
+	}
+	return "chrome"
+}
+
 func buildShareURI(spec Spec, transport, host, publicKey, shortID, serverName string) string {
 	q := func(v string) string { return strings.TrimRight(compat.VLESSURLQuote(v), "\n") }
 	h := strings.TrimSpace(compat.FormatURIAuthorityHost(host))
@@ -753,11 +795,14 @@ func buildShareURI(spec Spec, transport, host, publicKey, shortID, serverName st
 			"flow="+q(spec.Flow),
 			"security=reality",
 			"sni="+q(serverName),
-			"fp=chrome",
+			"fp="+q(linkFingerprint(spec)),
 			"pbk="+publicKey,
-			"sid="+shortID,
-			"type=raw",
+			"sid="+q(shortID),
 		)
+		if spx := strings.TrimSpace(spec.LinkSpiderX); spx != "" {
+			params = append(params, "spx="+q(spx))
+		}
+		params = append(params, "type=raw")
 	case TransportWS:
 		params = append(params, "security="+securityName(spec.Mode))
 		if serverName != "" {
@@ -826,10 +871,13 @@ func buildClash(spec Spec, transport, host, publicKey, shortID, serverName strin
 		b.WriteString("    tls: true\n")
 		fmt.Fprintf(&b, "    servername: %s\n", yamlValue(serverName))
 		fmt.Fprintf(&b, "    flow: %s\n", spec.Flow)
-		b.WriteString("    client-fingerprint: chrome\n")
+		fmt.Fprintf(&b, "    client-fingerprint: %s\n", linkFingerprint(spec))
 		b.WriteString("    reality-opts:\n")
 		fmt.Fprintf(&b, "      public-key: %s\n", publicKey)
 		fmt.Fprintf(&b, "      short-id: %s\n", shortID)
+		if spx := strings.TrimSpace(spec.LinkSpiderX); spx != "" {
+			fmt.Fprintf(&b, "      spider-x: %s\n", spx)
+		}
 	}
 	if transport == TransportWS {
 		b.WriteString("    ws-opts:\n")
@@ -1275,8 +1323,14 @@ func validUUID(s string) bool {
 	return true
 }
 
+// validShortID accepts 1-16 hex characters with even length. The empty string
+// is a valid entry (Xray allows an empty sid); an empty *list* is different and
+// is handled by the caller.
 func validShortID(s string) bool {
-	if len(s) < 1 || len(s) > 16 || len(s)%2 != 0 {
+	if s == "" {
+		return true
+	}
+	if len(s) > 16 || len(s)%2 != 0 {
 		return false
 	}
 	_, err := hex.DecodeString(s)

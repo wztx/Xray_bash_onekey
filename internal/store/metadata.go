@@ -38,6 +38,17 @@ type Metadata struct {
 	// front) from reality-nginx, whose TLS label is also "Reality". It is
 	// omitted when unknown so metadata written before this field stays readable.
 	BalanceRole string `json:"balanceRole,omitempty"`
+	// ShareLinkOnly is link decoration, not server configuration: a Reality
+	// client may use any uTLS fingerprint or spiderX and the server behaves the
+	// same. The JSON name states the scope, and nothing here is written to the
+	// runtime config or requires a restart/reload.
+	ShareLinkOnly *ShareLinkPrefs `json:"shareLinkOnly,omitempty"`
+}
+
+// ShareLinkPrefs carries the share-link-only Reality decorations.
+type ShareLinkPrefs struct {
+	Fingerprint string `json:"fingerprint,omitempty"`
+	SpiderX     string `json:"spiderX,omitempty"`
 }
 
 // InstallSnapshot is the non-secret install fingerprint Bash keeps in

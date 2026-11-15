@@ -44,6 +44,9 @@ var zh = map[string]string{
   xray relay           生成指向后端的 nginx 中转配置
   xray config edit     就地修改端口/传输/路径；TLS 站可改 --domain/--cert/--cert-key
                        默认对新域名做本地 TLS 握手，--no-probe 关闭；不自动重签
+                       Reality 可增删/列出 shortId（--short-id/--short-id-auto/
+                       --short-id-remove/--short-id-list）并轮换 privateKey；
+                       --fp/--spx 仅改分享链接，不改服务端配置、不重启
   xray user list|add|remove
                        列出现有用户，或增删用户（增删需沙箱或真实根门禁）
   xray logs clean|rotate enable|disable
@@ -131,6 +134,9 @@ Commands:
   xray config edit     patch ports/transport/paths in place; TLS sites accept
                        --domain/--cert/--cert-key, probe the new SNI locally unless
                        --no-probe is given, and never re-issue a certificate
+                       Reality accepts shortId add/auto/remove/list and a
+                       privateKey rotation; --fp/--spx only change the share
+                       link (no server config, no restart)
   xray user list|add|remove
                        list users, or add/remove one (add/remove need a sandbox or the real-root gate)
   xray logs clean|rotate enable|disable

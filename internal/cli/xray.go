@@ -204,13 +204,22 @@ func xrayShare(opts Options, cfg config, args []string) int {
 	if err != nil {
 		return fail(opts, cfg, err)
 	}
-	info, err := xraycfg.ShareConfig(raw, xraycfg.ShareOptions{
+	shareOpts := xraycfg.ShareOptions{
 		InboundIndex:   inbound,
 		Host:           flagValue(args, "--host"),
 		PublicPort:     publicPort,
 		PublicSecurity: flagValue(args, "--public-security"),
 		User:           flagValue(args, "--user"),
-	})
+	}
+	// Link-only preferences persisted by `xray config edit --fp/--spx`. A
+	// missing metadata file is not fatal: the link then keeps the defaults.
+	if paths, pathErr := host.NewPaths(cfg.root); pathErr == nil {
+		if meta, _, metaErr := store.LoadMetadata(paths); metaErr == nil && meta.ShareLinkOnly != nil {
+			shareOpts.Fingerprint = meta.ShareLinkOnly.Fingerprint
+			shareOpts.SpiderX = meta.ShareLinkOnly.SpiderX
+		}
+	}
+	info, err := xraycfg.ShareConfig(raw, shareOpts)
 	if err != nil {
 		return fail(opts, cfg, err)
 	}

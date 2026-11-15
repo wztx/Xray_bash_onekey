@@ -58,6 +58,16 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 	if err != nil {
 		return editFail(opts, cfg, err)
 	}
+	if req.ListShortIDs {
+		cfg.json = cfg.json || hasFlag(args, "--json")
+		if cfg.json {
+			return writeJSON(opts, preview)
+		}
+		for _, link := range preview.ShortIDLinks {
+			fmt.Fprintf(opts.Out, "short-id=%q share: %s\n", link.ShortID, link.ShareURI)
+		}
+		return 0
+	}
 	cfg.json = cfg.json || hasFlag(args, "--json")
 	if preview.NoChanges {
 		if cfg.json {
@@ -66,7 +76,29 @@ func xrayConfigEdit(ctx context.Context, opts Options, cfg config, args []string
 		fmt.Fprintln(opts.Out, "no changes: the requested values already match the runtime config")
 		return 0
 	}
-	if !dryRun && preview.Disconnect && !hasFlag(args, "--yes") {
+	if !dryRun && req.RotatePrivateKey {
+		// Printed before anything is written and before the prompt: this is the
+		// link that stops working the moment the new key is accepted.
+		if preview.OldShareURI != "" {
+			fmt.Fprintf(opts.Out, "old share (stops working after rotation): %s\n", preview.OldShareURI)
+		}
+		fmt.Fprintln(opts.Out, "rotating the Reality private key disconnects every client until it switches to the new link; the old link cannot be kept alive.")
+		phrase := strings.TrimSpace(flagValue(args, "--confirm-reality-rotation"))
+		if phrase == "" && opts.TTY {
+			fmt.Fprintf(opts.Out, "Type %q to confirm: ", rotateConfirmPhrase)
+			scanner := bufio.NewScanner(opts.In)
+			if scanner.Scan() {
+				phrase = strings.TrimSpace(scanner.Text())
+			}
+		}
+		if phrase != rotateConfirmPhrase {
+			return fail(opts, cfg, &change.UsageError{
+				Msg: fmt.Sprintf("private-key rotation needs the typed phrase %q (--confirm-reality-rotation in non-interactive mode); --yes is not enough", rotateConfirmPhrase),
+			})
+		}
+		spec.RotationConfirmed = true
+	}
+	if !dryRun && !req.RotatePrivateKey && preview.Disconnect && !hasFlag(args, "--yes") {
 		if !opts.TTY {
 			return fail(opts, cfg, &change.UsageError{
 				Msg: "this edit changes " + strings.Join(preview.Changed, ", ") +
@@ -189,6 +221,16 @@ func editRequestFromFlags(args []string) (xraycfg.EditRequest, error) {
 		CertFile:         flagValue(args, "--cert"),
 		KeyFile:          flagValue(args, "--cert-key"),
 		AllowNonLoopback: hasFlag(args, "--allow-non-loopback"),
+		ShortIDSet:       flagPresent(args, "--short-id"),
+		ShortID:          flagValue(args, "--short-id"),
+		ShortIDAuto:      hasFlag(args, "--short-id-auto"),
+		ShortIDRemove:    flagValue(args, "--short-id-remove"),
+		LinkFPChanged:    flagPresent(args, "--fp"),
+		LinkFingerprint:  flagValue(args, "--fp"),
+		LinkSpiderXSet:   flagPresent(args, "--spx"),
+		LinkSpiderX:      flagValue(args, "--spx"),
+		RotatePrivateKey: hasFlag(args, "--rotate-reality-private-key"),
+		ListShortIDs:     hasFlag(args, "--short-id-list"),
 	}
 	if raw := flagValue(args, "--server-names"); raw != "" {
 		for _, name := range strings.Split(raw, ",") {
@@ -217,14 +259,34 @@ func editRequestFromFlags(args []string) (xraycfg.EditRequest, error) {
 		}
 		*port.dst = v
 	}
+	realityFlag := req.ShortIDSet || req.ShortIDAuto || req.ShortIDRemove != "" ||
+		req.RotatePrivateKey || req.ListShortIDs || req.LinkFPChanged || req.LinkSpiderXSet
 	if req.Listen == "" && req.Transport == "" && req.WSPath == "" && req.XHTTPPath == "" &&
 		req.GRPCServiceName == "" && req.Target == "" && len(req.ServerNames) == 0 && req.UUID == "" &&
 		req.Domain == "" && req.CertFile == "" && req.KeyFile == "" &&
-		req.Port == 0 && req.PublicPort == 0 && req.WSPort == 0 && req.GRPCPort == 0 && req.XHTTPPort == 0 {
-		return xraycfg.EditRequest{}, fmt.Errorf("nothing to edit: pass at least one of --listen, --port, --public-port, --transport, --ws-path, --xhttp-path, --grpc-service-name, --target, --server-names, --uuid, --domain, --cert, --cert-key")
+		req.Port == 0 && req.PublicPort == 0 && req.WSPort == 0 && req.GRPCPort == 0 && req.XHTTPPort == 0 &&
+		!realityFlag {
+		return xraycfg.EditRequest{}, fmt.Errorf("nothing to edit: pass at least one of --listen, --port, --public-port, --transport, --ws-path, --xhttp-path, --grpc-service-name, --target, --server-names, --uuid, --domain, --cert, --cert-key, --short-id, --short-id-auto, --short-id-remove, --short-id-list, --rotate-reality-private-key, --fp, --spx")
 	}
 	return req, nil
 }
+
+// flagPresent reports whether a value flag was given at all, including
+// `--short-id ”` / `--fp=`. flagValue cannot tell those from an omitted flag.
+func flagPresent(args []string, name string) bool {
+	want := strings.TrimPrefix(name, "--")
+	for _, arg := range args {
+		got, _, _, ok := splitFlagToken(arg)
+		if ok && got == want {
+			return true
+		}
+	}
+	return false
+}
+
+// rotateConfirmPhrase is a typed phrase, not a y/N prompt: a private-key
+// rotation invalidates every existing link and drops live sessions.
+const rotateConfirmPhrase = "rotate-reality-key"
 
 func confirmEdit(opts Options) bool {
 	fmt.Fprint(opts.Out, "Continue? [y/N]: ")
@@ -247,7 +309,33 @@ func printEditPreview(opts Options, preview deploy.EditReport) {
 	if preview.OriginProbe != "" {
 		fmt.Fprintf(opts.Out, "origin: %s ok\n", preview.OriginProbe)
 	}
+	printRealityReport(opts, preview)
 	fmt.Fprintln(opts.Out, "dry-run: nothing was written")
+}
+
+// printRealityReport prints the Reality credential state. The fp/spx line
+// states its scope because it is the one setting that looks like server
+// configuration but is not.
+func printRealityReport(opts Options, r deploy.EditReport) {
+	if len(r.ShortIDs) > 0 || r.LinkPrefsUpdated {
+		fmt.Fprintf(opts.Out, "short-ids=%s\n", strings.Join(r.ShortIDs, ","))
+	}
+	if r.LinkPrefsUpdated {
+		fmt.Fprintf(opts.Out, "link-preferences: fp=%s spx=%s (share link only; server config unchanged)\n",
+			r.LinkFingerprint, r.LinkSpiderX)
+	}
+	if r.RealityProbe != "" {
+		fmt.Fprintf(opts.Out, "reality-probe: %s\n", r.RealityProbe)
+	}
+	if r.RealityRollbackProbe != "" {
+		fmt.Fprintf(opts.Out, "reality-probe-rollback: %s\n", r.RealityRollbackProbe)
+	}
+	if r.FailurePoint != "" {
+		fmt.Fprintf(opts.Out, "failurePoint=%s\n", r.FailurePoint)
+	}
+	if r.UpstreamSHA256 != "" {
+		fmt.Fprintf(opts.Out, "upstream: sha256=%s unchanged=%t\n", r.UpstreamSHA256, r.UpstreamUnchanged)
+	}
 }
 
 // printTLSReport surfaces the front-owned TLS values and the handshake
@@ -290,6 +378,7 @@ func printEditReport(opts Options, report deploy.EditReport) {
 	if report.ShareURI != "" {
 		fmt.Fprintf(opts.Out, "share: %s\n", report.ShareURI)
 	}
+	printRealityReport(opts, report)
 	if report.BackupDir != "" {
 		fmt.Fprintf(opts.Out, "backup: %s\n", report.BackupDir)
 	}

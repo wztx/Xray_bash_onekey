@@ -35,6 +35,9 @@ type EditSpec struct {
 	NoProbe              bool
 	DryRun               bool
 	AllowContainerWrites bool
+	// RotationConfirmed is set only after the CLI collected the typed phrase.
+	// A y/N answer is not enough for a private-key rotation.
+	RotationConfirmed bool
 }
 
 // EditReport describes what the edit changed and where the backup lives.
@@ -71,6 +74,20 @@ type EditReport struct {
 	SchedulePath    string   `json:"schedulePath,omitempty"`
 	Disconnect      bool     `json:"disconnect"`
 	Warnings        []string `json:"warnings"`
+	// Reality credential evidence. ShortIDLinks is read-only output; OldShareURI
+	// is what a rollback must bring back; FailurePoint names the failed stage
+	// (reality-handshake) so the E2E assertion can key on it.
+	ShortIDs             []string              `json:"shortIds,omitempty"`
+	ShortIDLinks         []xraycfg.ShortIDLink `json:"shortIdLinks,omitempty"`
+	OldShareURI          string                `json:"oldShareUri,omitempty"`
+	LinkPrefsUpdated     bool                  `json:"linkPrefsUpdated,omitempty"`
+	LinkFingerprint      string                `json:"linkFingerprint,omitempty"`
+	LinkSpiderX          string                `json:"linkSpiderX,omitempty"`
+	RealityProbe         string                `json:"realityProbe,omitempty"`
+	RealityRollbackProbe string                `json:"realityRollbackProbe,omitempty"`
+	FailurePoint         string                `json:"failurePoint,omitempty"`
+	UpstreamSHA256       string                `json:"upstreamSha256,omitempty"`
+	UpstreamUnchanged    bool                  `json:"upstreamUnchanged"`
 }
 
 // RelayEditSpec is one `xray config edit` request against a managed relay.
@@ -141,6 +158,12 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	if err != nil {
 		return EditReport{}, err
 	}
+	// shareLinkOnly preferences decorate the share URI only. They are loaded
+	// here so a key/shortId edit keeps the operator's fp/spx in the new link.
+	if meta, _, metaErr := store.LoadMetadata(paths); metaErr == nil && meta.ShareLinkOnly != nil {
+		base.LinkFingerprint = meta.ShareLinkOnly.Fingerprint
+		base.LinkSpiderX = meta.ShareLinkOnly.SpiderX
+	}
 	g, res, err := xraycfg.EditRuntime(raw, base, spec.Request)
 	if err != nil {
 		return EditReport{}, err
@@ -151,9 +174,28 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		NoChanges: res.NoChanges, NoRestart: spec.NoRestart, NoProbe: spec.NoProbe, DryRun: spec.DryRun,
 		Disconnect: res.Disconnect, ShareURI: g.ShareURI,
 		Domain: res.Domain, CertFile: res.CertFile, CertKeyFile: res.KeyFile,
+		ShortIDs: res.ShortIDs, ShortIDLinks: res.ShortIDLinks,
+		OldShareURI: res.OldShareURI, LinkFingerprint: res.LinkFingerprint, LinkSpiderX: res.LinkSpiderX,
+	}
+	if spec.Request.ListShortIDs {
+		// Read-only: the runtime config and the front are untouched.
+		report.NoChanges = true
+		return report, nil
+	}
+	runtimeChanged := !bytes.Equal(raw, g.Config)
+	// A link-preference change is metadata-only: no runtime rewrite, no restart
+	// and no Nginx reload. The new link is the only output.
+	if res.LinkPrefsChanged && !runtimeChanged {
+		updateMetadataAfterEdit(paths, res, raw, &report)
+		report.LinkPrefsUpdated = true
+		report.NewSHA256 = report.OldSHA256
+		return report, nil
 	}
 	if res.NoChanges {
 		return report, nil
+	}
+	if spec.Request.RotatePrivateKey && !spec.DryRun && !spec.RotationConfirmed {
+		return report, fmt.Errorf("private-key rotation requires the typed confirmation phrase")
 	}
 	report.NewSHA256 = store.HashBytes(g.Config)
 	if err := probeOriginIfRequested(ctx, spec.Request, res, &report); err != nil {
@@ -207,9 +249,6 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		return report, fmt.Errorf("%w; configuration was not changed", err)
 	}
 
-	// A front-owned edit leaves the runtime JSON byte-identical. Restarting
-	// Xray then would only drop live sessions for no reason.
-	runtimeChanged := !bytes.Equal(raw, g.Config)
 	schedulePath := ""
 	if tlsTouched {
 		if p, joinErr := paths.Join(schedule.ConfigRel, false); joinErr == nil {
@@ -220,8 +259,11 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	// the new files are user-owned and stay on disk, while the previous pair is
 	// what a manual rollback needs.
 	extras := editBackupExtras{CertFile: base.CertFile, KeyFile: base.KeyFile, ScheduleFile: schedulePath}
+	if res.PrivateKeyRotated {
+		extras.OldShareURI = res.OldShareURI
+	}
 	if !tlsTouched {
-		extras = editBackupExtras{}
+		extras.CertFile, extras.KeyFile, extras.ScheduleFile = "", "", ""
 	}
 	backupDir, err := writeEditBackup(paths, configPath, raw, nginxDir, res, extras)
 	if err != nil {
@@ -241,23 +283,62 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 		}
 		scheduleState = &st
 	}
+	// reality-balance edits are confined to the Xray Reality inbound: the
+	// upstream tree is not regenerated, so its content hash must not move.
+	frontDir := nginxDir
+	if res.Mode == xraycfg.ModeRealityBalance {
+		frontDir = ""
+	}
+	upstreamHash, _ := hashTree(nginxDir)
+	report.UpstreamSHA256 = upstreamHash
 	nginxSnap := []fileState{}
-	if nginxDir != "" {
-		nginxSnap, err = snapshotRegularFiles(nginxDir)
+	if frontDir != "" {
+		nginxSnap, err = snapshotRegularFiles(frontDir)
 		if err != nil {
 			return report, err
 		}
 	}
-	fail := func(cause error) (EditReport, error) {
-		restoreErr := restoreEditState(ctx, spec, configState, nginxSnap, nginxDir, scheduleState, runtimeChanged)
+	realityProbe := func(uri string) error {
+		report.RealityProbe = "skipped: --no-probe"
+		switch {
+		case spec.NoProbe:
+			return nil
+		case spec.NoRestart:
+			report.RealityProbe = "skipped: --no-restart"
+			return nil
+		}
+		addr := realityProbeAddress(res)
+		if err := verifyRealityHandshake(ctx, spec.Root, uri, addr); err != nil {
+			report.RealityProbe = "failed: " + err.Error()
+			return err
+		}
+		report.RealityProbe = "ok: vless+reality handshake through " + addr
+		return nil
+	}
+	var failAt func(point string, cause error) (EditReport, error)
+	fail := func(cause error) (EditReport, error) { return failAt("", cause) }
+	failAt = func(point string, cause error) (EditReport, error) {
+		report.FailurePoint = point
+		restoreErr := restoreEditState(ctx, spec, configState, nginxSnap, frontDir, scheduleState, runtimeChanged)
+		// The rollback is only complete if the old credential still works. Run
+		// the same real-client handshake with the pre-edit link.
+		if point == "reality-handshake" && res.OldShareURI != "" && !spec.NoProbe && !spec.NoRestart {
+			if probeErr := verifyRealityHandshake(ctx, spec.Root, res.OldShareURI,
+				realityProbeAddress(res)); probeErr != nil {
+				report.RealityRollbackProbe = "failed: " + probeErr.Error()
+				restoreErr = joinRollbackErr(restoreErr, "old-link handshake probe", probeErr)
+			} else {
+				report.RealityRollbackProbe = "ok: old link still completes a vless+reality handshake"
+			}
+		}
 		if restoreErr != nil {
 			return report, fmt.Errorf("%w; rollback failed: %v", cause, restoreErr)
 		}
 		return report, fmt.Errorf("%w; previous configuration restored", cause)
 	}
 
-	if nginxDir != "" {
-		if err := writeNginxArtifacts(nginxDir, &g); err != nil {
+	if frontDir != "" {
+		if err := writeNginxArtifacts(frontDir, &g); err != nil {
 			return fail(err)
 		}
 		// Permissions + syntax check first. The reload waits until Xray is back
@@ -287,9 +368,26 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 			}
 		}
 	}
-	if nginxDir != "" && !spec.NoRestart {
+	if frontDir != "" && !spec.NoRestart {
 		if err := nginx.Finalize(ctx, nginx.FinalizeSpec{Root: spec.Root}); err != nil {
 			return fail(err)
+		}
+	}
+	// The upstream tree must be byte-identical after a balance edit: only the
+	// Reality inbound may move.
+	if nginxDir != "" {
+		afterHash, _ := hashTree(nginxDir)
+		report.UpstreamUnchanged = afterHash == upstreamHash
+		if res.Mode == xraycfg.ModeRealityBalance && !report.UpstreamUnchanged {
+			return fail(fmt.Errorf("reality-balance upstream tree changed (%s -> %s); the edit must only touch the Reality inbound",
+				upstreamHash, afterHash))
+		}
+	} else {
+		report.UpstreamUnchanged = true
+	}
+	if res.PrivateKeyRotated || res.RealityCredentialMoved {
+		if err := realityProbe(g.ShareURI); err != nil {
+			return failAt("reality-handshake", err)
 		}
 	}
 	if tlsTouched {
@@ -322,6 +420,21 @@ func EditConfig(ctx context.Context, spec EditSpec) (EditReport, error) {
 	updateMetadataAfterEdit(paths, res, g.Config, &report)
 	pruneEditBackups(paths)
 	return report, nil
+}
+
+// realityProbeAddress is where the local client dials the Reality inbound. The
+// direct mode owns its listener; every Nginx-fronted mode only exposes the
+// public port. A wildcard listener is probed through loopback.
+func realityProbeAddress(res xraycfg.EditResult) string {
+	if res.Mode != xraycfg.ModeReality {
+		return probeAddress(res.PublicPort)
+	}
+	host := res.Listen
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(res.Port))
 }
 
 // touchedTLS reports whether the patch moved a value only the front owns.
@@ -419,8 +532,18 @@ func editBase(paths host.Paths, raw []byte) (xraycfg.EditDefaults, string, error
 	if body, readErr := os.ReadFile(filepath.Join(dir, nginx.MainConf)); readErr == nil {
 		conf := string(body)
 		if strings.Contains(conf, "stream {") {
-			if realityBackends(dir) > 1 {
-				return xraycfg.EditDefaults{}, "", fmt.Errorf("reality-balance installs are not editable yet")
+			// Metadata is authoritative: a balance primary with no added
+			// backends renders the same tree as reality-nginx, so counting
+			// upstream lines alone would misclassify it.
+			balance := false
+			if meta, _, metaErr := store.LoadMetadata(paths); metaErr == nil && meta.BalanceRole == "primary" {
+				balance = true
+			}
+			if balance || realityBackends(dir) > 1 {
+				// Balance only edits the Xray Reality inbound; the upstream tree
+				// stays as-is and its content hash is asserted after the edit.
+				return xraycfg.EditDefaults{Mode: xraycfg.ModeRealityBalance,
+					PublicPort: listenPort(conf, 443)}, dir, nil
 			}
 			// reality-nginx and a balance primary with no extra backends render
 			// the same Nginx tree, so a single local backend is the plain front.
@@ -579,6 +702,10 @@ type editBackupExtras struct {
 	CertFile     string
 	KeyFile      string
 	ScheduleFile string
+	// OldShareURI is the pre-rotation link. It is written verbatim so a manual
+	// rollback can verify the restored key with the same credential the
+	// clients held.
+	OldShareURI string
 }
 
 // writeEditBackup copies everything this edit may replace into an
@@ -626,6 +753,12 @@ func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir s
 	if err != nil {
 		return "", err
 	}
+	if extras.OldShareURI != "" {
+		if err := writeFileAtomic(filepath.Join(dir, "old-share-uri.txt"),
+			[]byte(extras.OldShareURI+"\n"), 0o600); err != nil {
+			return "", err
+		}
+	}
 	if nginxDir != "" {
 		entries, err := os.ReadDir(nginxDir)
 		if err != nil && !os.IsNotExist(err) {
@@ -658,6 +791,7 @@ func writeEditBackup(paths host.Paths, configPath string, raw []byte, nginxDir s
 		"tlsKeySaved":    keySaved,
 		"scheduleFile":   extras.ScheduleFile,
 		"scheduleSaved":  scheduleSaved,
+		"oldShareUri":    extras.OldShareURI,
 	}, "", "  ")
 	manifest = append(manifest, '\n')
 	if err := writeFileAtomic(filepath.Join(dir, "manifest.json"), manifest, 0o600); err != nil {
@@ -710,6 +844,15 @@ func updateMetadataAfterEdit(paths host.Paths, res xraycfg.EditResult, config []
 	if meta.Install != nil {
 		// Keep the snapshot describing the live origin, not the pre-edit one.
 		meta.Install.Target, meta.Install.ServerNames = realityOrigin(config)
+	}
+	// Persist link-only preferences. An empty pair clears the field instead of
+	// writing a meaningless default.
+	if res.LinkFingerprint == "" && res.LinkSpiderX == "" {
+		meta.ShareLinkOnly = nil
+	} else {
+		meta.ShareLinkOnly = &store.ShareLinkPrefs{
+			Fingerprint: res.LinkFingerprint, SpiderX: res.LinkSpiderX,
+		}
 	}
 	meta.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	body, _ := json.MarshalIndent(meta, "", "  ")

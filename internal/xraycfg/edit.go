@@ -19,6 +19,11 @@ type EditDefaults struct {
 	// serves, read back from Nginx. They are empty for every non-TLS mode.
 	CertFile string
 	KeyFile  string
+	// LinkFingerprint/LinkSpiderX are stored link preferences (metadata
+	// shareLinkOnly). They only shape the share URI; the runtime config never
+	// carries them.
+	LinkFingerprint string
+	LinkSpiderX     string
 }
 
 // EditRequest carries the operator overrides for `xray config edit`. Zero
@@ -42,6 +47,27 @@ type EditRequest struct {
 	CertFile         string
 	KeyFile          string
 	AllowNonLoopback bool
+	// Reality credentials. ShortIDSet distinguishes `--short-id ''` (clear the
+	// accepted-sid list) from an omitted flag; ShortIDAuto appends a generated
+	// id instead of clearing, so the two actions can never be confused.
+	ShortIDSet       bool
+	ShortID          string
+	ShortIDAuto      bool
+	ShortIDRemove    string
+	LinkFingerprint  string
+	LinkFPChanged    bool
+	LinkSpiderX      string
+	LinkSpiderXSet   bool
+	RotatePrivateKey bool
+	// ListShortIDs is read-only: it reports the accepted sids with one link per
+	// sid so the operator can hand out the new link before removing the old one.
+	ListShortIDs bool
+}
+
+// ShortIDLink pairs an accepted shortId with the share link that uses it.
+type ShortIDLink struct {
+	ShortID  string `json:"shortId"`
+	ShareURI string `json:"shareUri"`
 }
 
 // EditResult reports what the patch changed and whether the change can drop
@@ -59,11 +85,26 @@ type EditResult struct {
 	ServerNames []string
 	// Domain/CertFile/KeyFile are the effective TLS values after the patch,
 	// used by the edit path to validate the certificate and probe the handshake.
-	Domain     string
-	CertFile   string
-	KeyFile    string
-	Disconnect bool
-	NoChanges  bool
+	Domain       string
+	CertFile     string
+	KeyFile      string
+	ShortIDs     []string
+	ShortIDLinks []ShortIDLink
+	// OldShareURI is the link the clients hold before this patch. A private-key
+	// rotation prints it, writes it to the backup directory and uses it to prove
+	// that a rollback brought the old credential back.
+	OldShareURI string
+	// NewShareURI is the link that carries the credential this edit introduced
+	// (the appended sid or the rotated key), so verification probes the link the
+	// operator is about to hand out, not the first sid.
+	NewShareURI            string
+	LinkFingerprint        string
+	LinkSpiderX            string
+	LinkPrefsChanged       bool
+	PrivateKeyRotated      bool
+	RealityCredentialMoved bool
+	Disconnect             bool
+	NoChanges              bool
 	// Diff lists the changed runtime paths, so --dry-run and the confirmation
 	// prompt can show exactly what would move.
 	Diff []string
@@ -85,6 +126,33 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 	}
 	if req.UUID != "" && !sharedUUID {
 		return Generated{}, EditResult{}, fmt.Errorf("inbounds use different UUIDs; edit users with 'idleleo xray user add/remove'")
+	}
+	spec.LinkFingerprint, spec.LinkSpiderX = base.LinkFingerprint, base.LinkSpiderX
+	reality := spec.Mode == ModeReality || spec.Mode == ModeRealityNginx || spec.Mode == ModeRealityBalance
+	oldShare := ""
+	if reality {
+		// The pre-edit link must carry the same link preferences the clients
+		// already hold, otherwise the rollback probe uses a link nobody has.
+		if pub, keyErr := DerivePublicKey(spec.PrivateKey); keyErr == nil {
+			oldShare = buildShareURI(spec, TransportRaw, shareHostFor(spec), pub,
+				firstShortID(spec.ShortIDs), firstOf(spec.ServerNames, ""))
+		}
+	}
+	if req.ListShortIDs {
+		if !reality {
+			return Generated{}, EditResult{}, fmt.Errorf("--short-id-list only applies to Reality installs")
+		}
+		pub, _ := DerivePublicKey(spec.PrivateKey)
+		links := make([]ShortIDLink, 0, len(spec.ShortIDs))
+		for _, id := range spec.ShortIDs {
+			links = append(links, ShortIDLink{ShortID: id, ShareURI: buildShareURI(
+				spec, TransportRaw, shareHostFor(spec), pub, id, firstOf(spec.ServerNames, ""))})
+		}
+		return Generated{}, EditResult{
+			Mode: spec.Mode, Transport: spec.Transport,
+			ShortIDs: append([]string{}, spec.ShortIDs...), ShortIDLinks: links,
+			NoChanges: true,
+		}, nil
 	}
 	changed, err := applyEditRequest(&spec, base, req)
 	if err != nil {
@@ -111,23 +179,83 @@ func EditRuntime(raw []byte, base EditDefaults, req EditRequest) (Generated, Edi
 				"refusing to rewrite %q: regeneration would change a field this edit did not ask for; use 'idleleo xray install --rewrite-config'", d)
 		}
 	}
+	linkChanged := hasChange(changed, "link-fingerprint", "link-spiderx")
 	res := EditResult{
-		Changed:     changed,
-		Mode:        spec.Mode,
-		Transport:   spec.Transport,
-		Port:        spec.Port,
-		PublicPort:  spec.PublicPort,
-		Listen:      spec.Listen,
-		Target:      spec.Target,
-		ServerNames: append([]string(nil), spec.ServerNames...),
-		Domain:      spec.Domain,
-		CertFile:    spec.CertFile,
-		KeyFile:     spec.KeyFile,
-		Disconnect:  disconnectProne(changed),
-		NoChanges:   len(changed) == 0 || (len(diffs) == 0 && !nginxOnlyChange(changed)),
-		Diff:        diffs,
+		Changed:           changed,
+		Mode:              spec.Mode,
+		Transport:         spec.Transport,
+		Port:              spec.Port,
+		PublicPort:        spec.PublicPort,
+		Listen:            spec.Listen,
+		Target:            spec.Target,
+		ServerNames:       append([]string(nil), spec.ServerNames...),
+		Domain:            spec.Domain,
+		CertFile:          spec.CertFile,
+		KeyFile:           spec.KeyFile,
+		ShortIDs:          append([]string{}, spec.ShortIDs...),
+		OldShareURI:       oldShare,
+		LinkFingerprint:   spec.LinkFingerprint,
+		LinkSpiderX:       spec.LinkSpiderX,
+		LinkPrefsChanged:  linkChanged,
+		PrivateKeyRotated: req.RotatePrivateKey,
+		RealityCredentialMoved: hasChange(changed, "reality-private-key", "short-id-add",
+			"short-id-auto", "short-id-remove", "short-id-clear"),
+		Disconnect: disconnectProne(changed),
+		// A link-preference change produces no runtime diff and must still count
+		// as a change: the share link the operator copies is the product.
+		NoChanges: len(changed) == 0 ||
+			(len(diffs) == 0 && !nginxOnlyChange(changed) && !linkChanged),
+		Diff: diffs,
+	}
+	if reality {
+		probeSID := firstShortID(spec.ShortIDs)
+		if req.ShortIDAuto || (req.ShortIDSet && strings.TrimSpace(req.ShortID) != "") {
+			probeSID = lastOf(spec.ShortIDs, probeSID)
+		}
+		if pub, keyErr := DerivePublicKey(spec.PrivateKey); keyErr == nil {
+			res.NewShareURI = buildShareURI(spec, TransportRaw, shareHostFor(spec), pub,
+				probeSID, firstOf(spec.ServerNames, ""))
+			g.ShareURI = res.NewShareURI
+		}
 	}
 	return g, res, nil
+}
+
+func lastOf(values []string, fallback string) string {
+	if len(values) == 0 {
+		return fallback
+	}
+	return values[len(values)-1]
+}
+
+func hasChange(changed []string, names ...string) bool {
+	for _, c := range changed {
+		for _, n := range names {
+			if c == n {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shareHostFor mirrors the host Generate uses for the share link.
+func shareHostFor(spec Spec) string {
+	if spec.Domain != "" {
+		return spec.Domain
+	}
+	if len(spec.ServerNames) > 0 {
+		return spec.ServerNames[0]
+	}
+	return spec.Listen
+}
+
+// firstShortID is the primary accepted sid for a share link.
+func firstShortID(ids []string) string {
+	if len(ids) > 0 {
+		return ids[0]
+	}
+	return ""
 }
 
 // nginxOnlyChange reports whether the patch only moved front-owned values.
@@ -147,7 +275,8 @@ func nginxOnlyChange(changed []string) bool {
 func disconnectProne(changed []string) bool {
 	for _, field := range changed {
 		switch field {
-		case "port", "public-port", "transport", "uuid", "listen":
+		case "port", "public-port", "transport", "uuid", "listen",
+			"reality-private-key", "short-id-remove", "short-id-clear":
 			return true
 		}
 	}
@@ -194,6 +323,9 @@ func editScopeFor(req EditRequest, inbounds int) (editScope, error) {
 	if len(req.ServerNames) > 0 {
 		a.prefixes = append(a.prefixes, "inbounds[0].streamSettings.realitySettings.serverNames")
 	}
+	if req.ShortIDSet || req.ShortIDAuto || req.ShortIDRemove != "" || req.RotatePrivateKey {
+		a.prefixes = append(a.prefixes, "inbounds[0].streamSettings.realitySettings")
+	}
 	return a, nil
 }
 
@@ -216,8 +348,8 @@ func (a editScope) permits(path string) bool {
 // combinations that would silently change unrelated topology.
 func applyEditRequest(spec *Spec, base EditDefaults, req EditRequest) ([]string, error) {
 	changed := []string{}
-	nginxFront := base.Mode == ModeRealityNginx || base.Mode == ModeTLS
-	reality := base.Mode == ModeReality || base.Mode == ModeRealityNginx
+	nginxFront := base.Mode == ModeRealityNginx || base.Mode == ModeTLS || base.Mode == ModeRealityBalance
+	reality := base.Mode == ModeReality || base.Mode == ModeRealityNginx || base.Mode == ModeRealityBalance
 	usesWS := spec.Transport == TransportWS || spec.Transport == TransportMulti ||
 		(reality && spec.Transport == TransportWS)
 	usesXHTTP := spec.Transport == TransportXHTTP || spec.Transport == TransportMulti
@@ -347,7 +479,114 @@ func applyEditRequest(spec *Spec, base EditDefaults, req EditRequest) ([]string,
 			changed = append(changed, "cert-key-file")
 		}
 	}
+	credential := req.ShortIDSet || req.ShortIDAuto || req.ShortIDRemove != "" || req.RotatePrivateKey
+	if credential && !reality {
+		return nil, fmt.Errorf("Reality credential flags only apply to Reality installs")
+	}
+	if req.ShortIDSet && req.ShortIDAuto {
+		return nil, fmt.Errorf("--short-id and --short-id-auto are separate actions; pick one")
+	}
+	if req.ShortIDRemove != "" && (req.ShortIDSet || req.ShortIDAuto) {
+		return nil, fmt.Errorf("--short-id-remove cannot be combined with --short-id/--short-id-auto")
+	}
+	if credential {
+		if spec.ShortIDs == nil {
+			spec.ShortIDs = []string{}
+		}
+		switch {
+		case req.ShortIDAuto:
+			// Append without removing: existing clients keep their sid while the
+			// operator hands out the new link.
+			id, err := NewShortID()
+			if err != nil {
+				return nil, err
+			}
+			spec.ShortIDs = appendUnique(spec.ShortIDs, id)
+			changed = append(changed, "short-id-auto")
+		case req.ShortIDSet && req.ShortID == "":
+			// Explicit clear, never inferred from an empty value elsewhere.
+			if len(spec.ShortIDs) > 0 {
+				spec.ShortIDs = []string{}
+				changed = append(changed, "short-id-clear")
+			}
+		case req.ShortIDSet:
+			id := strings.TrimSpace(req.ShortID)
+			if !validShortID(id) {
+				return nil, fmt.Errorf("--short-id must be 1-16 hex characters with even length, or empty to clear all")
+			}
+			if !containsString(spec.ShortIDs, id) {
+				spec.ShortIDs = appendUnique(spec.ShortIDs, id)
+				changed = append(changed, "short-id-add")
+			}
+		case req.ShortIDRemove != "":
+			id := strings.TrimSpace(req.ShortIDRemove)
+			if !containsString(spec.ShortIDs, id) {
+				return nil, fmt.Errorf("shortId %q is not in the accepted list", id)
+			}
+			spec.ShortIDs = removeString(spec.ShortIDs, id)
+			changed = append(changed, "short-id-remove")
+		}
+		if req.RotatePrivateKey {
+			private, _, err := NewRealityKeys()
+			if err != nil {
+				return nil, err
+			}
+			spec.PrivateKey = private
+			changed = append(changed, "reality-private-key")
+		}
+	}
+	if req.LinkFPChanged {
+		fp := strings.TrimSpace(req.LinkFingerprint)
+		if fp != "" && !validFingerprint(fp) {
+			return nil, fmt.Errorf("--fp must be one of chrome, firefox, safari, ios, android, edge, 360, qq, random")
+		}
+		spec.LinkFingerprint = fp
+		changed = append(changed, "link-fingerprint")
+	}
+	if req.LinkSpiderXSet {
+		spx := strings.TrimSpace(req.LinkSpiderX)
+		if spx != "" && !strings.HasPrefix(spx, "/") {
+			return nil, fmt.Errorf("--spx must start with '/' (it is the spider path in the share link)")
+		}
+		spec.LinkSpiderX = spx
+		changed = append(changed, "link-spiderx")
+	}
 	return changed, nil
+}
+
+// validFingerprint keeps the share link to uTLS profiles Xray clients know.
+func validFingerprint(fp string) bool {
+	switch strings.ToLower(fp) {
+	case "chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq", "random", "randomized":
+		return true
+	}
+	return false
+}
+
+func containsString(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUnique(values []string, v string) []string {
+	if containsString(values, v) {
+		return values
+	}
+	return append(values, v)
+}
+
+func removeString(values []string, drop string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != drop {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // editSpecFromRuntime extracts the values Generate needs from a live config.
@@ -450,8 +689,12 @@ func editSpecFromRuntime(root map[string]any, base EditDefaults) (Spec, bool, er
 			spec.Target = asString(rs["dest"])
 		}
 		spec.PrivateKey = asString(rs["privateKey"])
-		if ids := asSlice(rs["shortIds"]); len(ids) > 0 {
-			spec.ShortID = asString(ids[0])
+		spec.ShortIDs = []string{}
+		for _, id := range asSlice(rs["shortIds"]) {
+			spec.ShortIDs = append(spec.ShortIDs, asString(id))
+		}
+		if len(spec.ShortIDs) > 0 {
+			spec.ShortID = spec.ShortIDs[0]
 		}
 		for _, sn := range asSlice(rs["serverNames"]) {
 			spec.ServerNames = append(spec.ServerNames, asString(sn))
@@ -465,8 +708,12 @@ func editSpecFromRuntime(root map[string]any, base EditDefaults) (Spec, bool, er
 		spec.Port = base.PublicPort
 	}
 	if spec.Mode == ModeRealityBalance {
-		return Spec{}, false, fmt.Errorf("reality-balance installs are not editable yet")
+		// The editable config is always the primary: it owns the Reality inbound
+		// and the Nginx front. Backend upstream files are never regenerated by an
+		// edit; deploy compares their content hash before and after.
+		spec.BalanceRole = BalanceRolePrimary
 	}
+	spec.LinkFingerprint, spec.LinkSpiderX = base.LinkFingerprint, base.LinkSpiderX
 	return spec, sharedUUID, nil
 }
 

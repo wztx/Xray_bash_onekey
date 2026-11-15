@@ -36,6 +36,13 @@ type ShareOptions struct {
 	PublicPort     int
 	PublicSecurity string
 	User           string
+	// Fingerprint/SpiderX are link-only decorations persisted in metadata
+	// (shareLinkOnly). They never change the runtime config.
+	Fingerprint string
+	SpiderX     string
+	// ShortID picks which accepted sid the link carries; empty means the first
+	// sid in the runtime config.
+	ShortID string
 }
 
 // Share renders VLESS URI and Clash proxy for one inbound and one user using
@@ -169,6 +176,11 @@ func ShareConfig(raw []byte, opts ShareOptions) (ShareInfo, error) {
 		Mode: specMode(mode, network), Transport: network, Port: port, PublicPort: opts.PublicPort,
 		Listen: listen, Domain: host, Path: path, ServiceName: serviceName,
 		UUID: id, Flow: flow, ServerNames: serverNames, ShortID: shortID,
+		LinkFingerprint: opts.Fingerprint, LinkSpiderX: opts.SpiderX,
+	}
+	if opts.ShortID != "" {
+		spec.ShortID = opts.ShortID
+		shortID = opts.ShortID
 	}
 	if len(serverNames) == 0 && host != "" {
 		spec.ServerNames = []string{host}

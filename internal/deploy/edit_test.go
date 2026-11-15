@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/host"
+	"github.com/hello-yunshu/Xray_bash_onekey/internal/nginx"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/store"
 	"github.com/hello-yunshu/Xray_bash_onekey/internal/xraycfg"
 )
@@ -152,6 +153,60 @@ func TestEditConfigWritesCandidateAndBackup(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(report.BackupDir, "manifest.json")); err != nil {
 		t.Fatalf("backup manifest missing: %v", err)
+	}
+}
+
+func TestEditRealityBalanceLeavesUpstreamTreeUntouched(t *testing.T) {
+	root, configPath, _ := editSandbox(t)
+	balance, err := xraycfg.Generate(xraycfg.Spec{
+		Mode: xraycfg.ModeRealityBalance, BalanceRole: xraycfg.BalanceRolePrimary,
+		Domain: "example.com", Port: 443,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, balance.Config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metaPath := filepath.Join(root, "etc/idleleo/v1/metadata.json")
+	seed := `{"schemaVersion":1,"activeEngine":"xray","role":"node","tls":"Reality","transport":"raw",` +
+		`"balanceRole":"primary","provenance":"native","runtimeConfigPath":"etc/idleleo/conf/xray/config.json"}` + "\n"
+	if err := os.WriteFile(metaPath, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nginxDir := filepath.Join(root, nginxDirRel)
+	if err := os.MkdirAll(nginxDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nginxDir, nginx.MainConf),
+		[]byte("stream {\n    server {\n        listen 443;\n    }\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	upstream := filepath.Join(nginxDir, "reality_upstream.conf")
+	if err := os.WriteFile(upstream, []byte("server 127.0.0.1:9443;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := hashTree(nginxDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubXrayTest(t, func(context.Context, string, string) error { return nil })
+	report, err := EditConfig(context.Background(), EditSpec{
+		Root: root, Request: xraycfg.EditRequest{ShortIDAuto: true},
+		NoRestart: true, NoProbe: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.UpstreamUnchanged || report.UpstreamSHA256 != before {
+		t.Fatalf("upstream evidence = %+v, want hash %s", report, before)
+	}
+	after, err := hashTree(nginxDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("reality-balance edit changed the upstream tree: %s -> %s", before, after)
 	}
 }
 

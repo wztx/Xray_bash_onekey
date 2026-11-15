@@ -704,7 +704,9 @@ func editSpecFromRuntime(root map[string]any, base EditDefaults) (Spec, bool, er
 		// modes; regenerating it would change the certificate wiring.
 		return Spec{}, false, fmt.Errorf("direct TLS configs are not editable; reinstall with --mode tls")
 	}
-	if base.Mode == ModeRealityNginx || base.Mode == ModeTLS {
+	if base.Mode == ModeRealityNginx || base.Mode == ModeRealityBalance || base.Mode == ModeTLS {
+		// These modes keep Xray on the loopback backend port and put the
+		// operator-facing port on the front; spec.Port is the front port.
 		spec.Port = base.PublicPort
 	}
 	// A direct Reality install has no front to report the public port, so the

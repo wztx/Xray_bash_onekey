@@ -77,6 +77,11 @@
 - 轮换保留 shortIds、新旧链接 pbk 正确；
 - `validShortID` 空串 / 16 hex。
 
+`internal/deploy/edit_test.go`：
+- `TestEditRealityBalanceLeavesUpstreamTreeUntouched`：用 `Generate` 产出的
+  balance primary 配置 + upstream 片段，编辑 shortId 前后 `hashTree` 相同，
+  报告 `upstreamUnchanged=true` 且 SHA 等于编辑前。
+
 ### 3.2 E2E（证据先行）
 
 **E7（shortId 零断线过渡，base M1）**

@@ -259,7 +259,9 @@
     `share link only; server config unchanged`；纯链接偏好编辑不写 runtime、
     不重启、不 reload，配置 SHA 不变。
   - `reality-balance` 可编辑：只改 Xray inbound 的 `realitySettings`，
-    `frontDir=""` 且改前改后 `hashTree(nginxDir)` 必须相同（E2E 有断言）。
+    `frontDir=""` 且改前改后 `hashTree(nginxDir)` 必须相同；
+    `TestEditRealityBalanceLeavesUpstreamTreeUntouched` 用真实 balance 配置与
+    upstream 片段断言树哈希不变，报告 `upstreamUnchanged=true`。
   - 探针：真实 xray 客户端 + 隧道内 TLS 握手 + 认证后的 HTTP 请求。只做
     TLS 握手无法区分「凭据通过」与「Reality 回退到伪装目标」，两者都能握手成功。
   - 单测：`go test ./internal/xraycfg ./internal/deploy ./internal/cli`

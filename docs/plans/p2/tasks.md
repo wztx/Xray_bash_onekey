@@ -217,6 +217,27 @@
   - 单测：`go test ./internal/xraycfg ./internal/deploy ./internal/schedule`（域名/证书
     rewrite、SAN/过期/配对拒绝、近到期与私钥权限 warning、握手 ok/skipped/失败三态、
     备份内容、Bash 根拒绝、jobs.json 更新与观测优先级）。
+  - E2E（真 Nginx + 真证书替换，证据先行）：
+    `evidence/e5e6-11150953-3f25259/p2/` 下 E5/E6 双 PASS，`install-matrix.md` 中
+    E5/E6 行均为 **PASS**（该次只跑 E5/E6，M* 与 E1–E4 行因缺证据记 HARNESS/BLOCKER，
+    不代表回归）。
+    - E5 成功路径（`.../E5/go/edit/checks.json`，11 项全 true）：M4 TLS/ws 安装 +
+      `schedule install` → 同域名新自签对 → `edit --cert/--cert-key`；
+      `tlsProbe=ok`、`tlsVersion=TLS 1.3`、独立 openssl 指纹与配置证书一致、
+      fragment 指向新对、旧对进入 `edit-<ts>/tls-cert.pem|tls-key.pem`、
+      jobs.json 三字段同步为相对路径、runtime sha 逐字节不变、Xray MainPID/
+      ActiveEnterTimestamp 不变、改后 L4 PASS。
+    - E6 回滚路径（`.../E6/go/edit/checks.json`，10 项全 true）：
+      (a) `--domain other.test` 被写前校验拒绝（`does not cover`），全部 sha 与备份数不变；
+      (b) 合法新对 + `ExecReload` 置空后仅 `/bin/true`（reload 静默不生效）→ 探针报
+      `front at 127.0.0.1:443 serves a certificate that differs...` → 回滚；
+      runtime、三个 nginx fragment、jobs.json、served 证书全部还原，旧对在备份中，
+      xray/nginx 仍 active，失败点与 stderr 原样入库，回滚后 L4 PASS。
+    - 探针新增 reload 竞态重试（5s 窗口，仅重试「证书不符」）：Nginx reload 异步，
+      首次实现曾在快速连续编辑时误判并回滚，E5 证据暴露后已修复并有单测
+      `TestProbeLocalTLSRetriesTheReloadRace`。
+    - 备份改为保存**改前**证书对（manifest 另记 `tlsNewCertFile/tlsNewKeyFile`）：
+      首个 E5 设计核对时发现原实现备份的是新对，不满足「旧证书可回滚」。
   - 已知差异：不自动重签（G16，与 G15 分开登记）。
 - [ ] S4 Reality 握手参数。
 - [ ] C2 流量阻断 ruleset（ED-003）。

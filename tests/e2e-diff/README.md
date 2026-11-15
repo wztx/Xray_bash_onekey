@@ -79,6 +79,26 @@ E2E_RUN_ID=<run-id> E2E_ONLY=M4/go bash tests/e2e-diff/run_p1_smoke.sh
 
 P1 未覆盖（留给后续阶段）：M2/M3/M5–M10、relay 分支、ACME、OPS 菜单操作、外部子脚本、R1/R2 升级链。
 
+## P2 配置编辑场景（E1–E6，Go）
+
+编辑场景跑在真实安装之上：先按 matrix 的 `base` 安装，再在容器内执行编辑，最后重跑 L4
+（`edit_job`，驱动 `drivers/go_edit.sh`；E5/E6 用 `drivers/go_edit_tls.sh`）。
+
+```bash
+E2E_ONLY=E5,E6 bash tests/e2e-diff/run_p2_matrix.sh
+```
+
+- E5：TLS 证书替换成功路径（M4）。校验写入、reload、本地握手、jobs.json 续期目标、
+  旧证书对进入 `edit-<ts>/`、runtime 逐字节不变且 Xray 不重启。
+- E6：回滚路径（M4）。(a) `--domain` 与证书 SAN 不匹配时写前拒写、零落盘；
+  (b) 用 systemd drop-in `ExecReload=` + `ExecReload=/bin/true` 让 reload 静默不生效，
+  探针发现证书不符后整体回滚（runtime/nginx fragment/jobs.json/证书），服务保持 active。
+  注意：`ExecReload` 是多值指令，必须先写空赋值重置，否则 systemd 会同时执行原命令。
+- 限制：E6b 的失败点由「reload 静默未生效」制造，验证的是写入后探针兜底与全量回滚，
+  不是 Nginx 证书加载失败分支。探针对「证书不符」有 5s 重试窗口（reload 异步）。
+- 证据：`evidence/e5e6-11150953-3f25259/p2/E5|E6/go/edit/`（checks.json、edit.json、
+  edit.err、state-*/、backup/、L4-before|after/）。
+
 ## 已知未决项（P0 如实记录，P1 后更新）
 
 | 项 | 状态 | 处理 |

@@ -260,6 +260,28 @@
       "checks": ["editRcZero", "configChanged", "targetApplied", "probeReported", "serviceActive"],
       "l4": "reality",
       "notes": "探测按系统根证书校验链 + hostname（与 Reality 要求等价，不额外查 OCSP、不锁 TLS 版本）；E2E 用受信本地 CA 签发的本地 TLS listener 代替外网回源，不给生产加 --skip-probe 后门。本地 origin 必须像真实站点一样协商 ALPN（h2/http1.1），否则 Reality 会判为 invalid 并回退（已取证）。"
+    },
+    {
+      "id": "E5",
+      "name": "config-edit-tls-cert-success",
+      "base": "M4",
+      "method": "M4 安装（TLS/ws，Nginx 443，证书 /etc/idleleo/cert/xray.crt）-> schedule install 写入 cert-renew 目标 -> 生成同域名新自签对 -> xray config edit --cert/--cert-key -> 校验写入/reload/握手/jobs.json/备份/不重启 Xray -> 改后 L4",
+      "go": {"argv": ["idleleo", "xray", "config", "edit", "--cert", "/etc/idleleo/cert/e5-new.crt", "--cert-key", "/etc/idleleo/cert/e5-new.key", "--yes", "--container", "--json"]},
+      "l4Profile": "tls",
+      "l4Transport": "ws",
+      "checks": ["editRcZero", "probeOk", "tlsVersion13", "wireCertMatches", "fragmentUpdated", "backupHasOldCert", "backupHasOldKey", "scheduleUpdated", "runtimeUnchanged", "xrayNotRestarted", "servicesActive"],
+      "notes": "M4 的证书/域名编辑是前端所有，runtime JSON 必须逐字节不变且 Xray 不重启；旧对被备份到 edit-<ts>/。"
+    },
+    {
+      "id": "E6",
+      "name": "config-edit-tls-rollback",
+      "base": "M4",
+      "method": "M4 安装 + schedule install -> (a) --domain other.test 触发写前拒写 -> (b) 合法新对 + nginx ExecReload 静默 no-op -> 探针发现证书不符 -> 全量回滚 -> 改后 L4",
+      "go": {"argv": ["idleleo", "xray", "config", "edit", "--cert", "/etc/idleleo/cert/e6-new.crt", "--cert-key", "/etc/idleleo/cert/e6-new.key", "--yes", "--container", "--json"]},
+      "l4Profile": "tls",
+      "l4Transport": "ws",
+      "checks": ["guardRejected", "guardZeroWrites", "rollbackRcNonZero", "probeFailureRecorded", "configRestored", "nginxRestored", "scheduleRestored", "servedCertRestored", "backupHasOldPair", "servicesActive"],
+      "notes": "E6a 证明写前守卫零落盘；E6b 由 reload 静默未生效制造真实握手失败，证明写入后探针会触发 runtime/nginx/jobs.json 全量回滚且服务保持 active。"
     }
   ],
   "upgrade": {

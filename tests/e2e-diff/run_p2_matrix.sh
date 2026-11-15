@@ -410,6 +410,7 @@ scenario_job() {
 # --- config edit scenarios (Go only) ---------------------------------------
 run_edit_l4() {
     local eid=$1 server=$2 out=$3 label=$4 net=$5
+    local profile="${6:-reality}" transport="${7:-reality}"
     local client="e2e-$RUN_ID-$eid-go-$label"
     local secret="$WORK/secret/$eid-$label"
     mkdir -p "$out/edit"
@@ -417,9 +418,17 @@ run_edit_l4() {
     # post-edit client container has to trust the same chain.
     local extra_ca=""
     [[ -f "$out/edit/local-ca.crt" ]] && extra_ca="$out/edit/local-ca.crt"
-    E2E_EXTRA_CA="$extra_ca" E2E_L4_URL="http://example.com/" E2E_L4_MARKER="Example Domain" \
+    # Pin whatever Nginx is configured to serve now: E5 swaps the pair, so the
+    # default path would make the post-edit client reject the new certificate.
+    local cert_pin="/etc/idleleo/cert/xray.crt" live=""
+    live=$(docker exec "$server" sh -c \
+        "awk '/ssl_certificate[[:space:]]/{print \$2; exit}' /etc/idleleo/conf/nginx/00-xray.conf 2>/dev/null" |
+        tr -d ';' | head -1) || true
+    [[ -n "$live" ]] && cert_pin="$live"
+    E2E_EXTRA_CA="$extra_ca" E2E_L4_CERT="$cert_pin" \
+        E2E_L4_URL="http://example.com/" E2E_L4_MARKER="Example Domain" \
         bash "$SUITE/collect/l4.sh" "$server" "$client" "$IMAGE_TAG" "$net" \
-            reality "$DOMAIN" "$WORK/seed/xray" "$secret" "$out/edit/L4-$label" reality \
+            "$profile" "$DOMAIN" "$WORK/seed/xray" "$secret" "$out/edit/L4-$label" "$transport" \
             >"$out/edit/L4-$label.log" 2>&1
 }
 
@@ -429,23 +438,51 @@ edit_job() {
     local base="$EVID/$eid"
     local gout="$base/go"
     mkdir -p "$gout"
+    # Older runs can leave empty e2e networks behind; Docker Desktop runs out of
+    # address pools long before that is obvious, and `docker run` then fails
+    # with "network ... not found". Only remove ones with no containers.
+    local stale count
+    while IFS= read -r stale; do
+        [[ -n "$stale" ]] || continue
+        count=$(docker network inspect -f '{{len .Containers}}' "$stale" 2>/dev/null || echo 1)
+        if [[ "$count" == "0" ]]; then
+            docker network rm "$stale" >/dev/null 2>&1 || true
+        fi
+    done < <(docker network ls --format '{{.Name}}' | grep '^e2e-' || true)
     docker network create "$net" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        docker network inspect "$net" >/dev/null 2>&1 && break
+        docker network create "$net" >/dev/null 2>&1 || sleep 1
+    done
+    if ! docker network inspect "$net" >/dev/null 2>&1; then
+        log "[$eid] FATAL: cannot create network $net"
+    fi
     log "[$eid] start"
-    local base_sid go_argv_json edit_argv_json
+    local base_sid go_argv_json edit_argv_json l4_profile l4_transport
     base_sid=$(edit_get "$eid" base)
     go_argv_json=$(matrix_get "$base_sid" go.argv)
     edit_argv_json=$(edit_get "$eid" go.argv)
+    l4_profile=$(edit_get "$eid" l4Profile 2>/dev/null || true)
+    l4_transport=$(edit_get "$eid" l4Transport 2>/dev/null || true)
+    [[ -n "$l4_profile" ]] || l4_profile="reality"
+    [[ -n "$l4_transport" ]] || l4_transport="reality"
     local gserver="e2e-$RUN_ID-$eid-go"
     if start_server "$gserver" "$eid" go "$gout" "$net"; then
         GO_ARGV=()
         while IFS= read -r line; do GO_ARGV+=("$line"); done < <(json_list "$go_argv_json")
-        run_go_round "$base_sid" "$gserver" "$gout" 1 "" reality "${GO_ARGV[@]}"
-        run_edit_l4 "$eid" "$gserver" "$gout" before "$net"
+        run_go_round "$base_sid" "$gserver" "$gout" 1 "" "$l4_profile" "${GO_ARGV[@]}"
+        run_edit_l4 "$eid" "$gserver" "$gout" before "$net" "$l4_profile" "$l4_transport"
         EDIT_ARGV=()
         while IFS= read -r line; do EDIT_ARGV+=("$line"); done < <(json_list "$edit_argv_json")
+        local driver="go_edit.sh"
+        local driver_args=("${EDIT_ARGV[@]}")
+        if [[ "$eid" == "E5" || "$eid" == "E6" ]]; then
+            driver="go_edit_tls.sh"
+            driver_args=("$eid" "${EDIT_ARGV[@]}")
+        fi
         docker exec -e E2E_OUT=/out -e E2E_SCENARIO="$eid" "$gserver" \
-            bash /src/tests/e2e-diff/drivers/go_edit.sh "${EDIT_ARGV[@]}"
-        run_edit_l4 "$eid" "$gserver" "$gout" after "$net"
+            bash "/src/tests/e2e-diff/drivers/$driver" "${driver_args[@]}"
+        run_edit_l4 "$eid" "$gserver" "$gout" after "$net" "$l4_profile" "$l4_transport"
         echo 0 >"$gout/install.rc"
     else
         echo '{"status":"harness-error","reason":"container start failed"}' >"$gout/harness.json"
@@ -1857,7 +1894,7 @@ done
 # Config-edit scenarios are Go-only and run after the install matrix; they
 # reuse a real M1 install from the same runner build.
 EIDS=()
-for eid in E1 E2 E3 E4; do
+for eid in E1 E2 E3 E4 E5 E6; do
     if [[ -n "$ONLY" ]]; then
         case ",$ONLY," in *,$eid,*) ;; *) continue ;; esac
     fi

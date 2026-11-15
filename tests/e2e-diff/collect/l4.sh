@@ -33,6 +33,10 @@ SECRET_DIR="$8"
 OUT="$9"
 TRANSPORT="${10:-auto}"
 EXTRA_CA="${E2E_EXTRA_CA:-}"
+# E2E_L4_CERT overrides the certificate pinned in tls mode (path inside the
+# server container). Edit scenarios point it at whatever Nginx currently
+# serves, so a certificate swap stays probe-able without rewriting the file.
+CERT_PIN="${E2E_L4_CERT:-/etc/idleleo/cert/xray.crt}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_URL="${E2E_L4_URL:-http://example.com/}"
 MARKER="${E2E_L4_MARKER:-Example Domain}"
@@ -72,6 +76,7 @@ docker exec "$SERVER" python3 /src/tests/e2e-diff/collect/client_config.py \
     --server-port 443 \
     --domain "$DOMAIN" \
     ${EXTRA[@]+"${EXTRA[@]}"} \
+    --cert "$CERT_PIN" \
     --output /tmp/e2e-client.json >"$OUT/client-config.log" 2>&1 || fail "client config generation failed"
 docker cp "$SERVER:/tmp/e2e-client.json" "$SECRET_DIR/client.json" >/dev/null 2>&1 || fail "cannot extract client config"
 docker exec "$SERVER" rm -f /tmp/e2e-client.json
@@ -126,4 +131,7 @@ json.dump({
 PY
 
 [[ "$ok" == true ]] || fail "business request failed (curl exit $rc, body bytes ${#body})"
+# The client is single-use; leaving it behind pins its network and eventually
+# exhausts Docker's address pools on repeat runs.
+[[ "${E2E_KEEP:-0}" == "1" ]] || docker rm -f "$CLIENT" >/dev/null 2>&1 || true
 echo "L4 ok ($PROFILE)"

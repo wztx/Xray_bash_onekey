@@ -142,19 +142,31 @@ Go 的 `xray balance add|list|remove` 与 bash `2>3>1`（file_manager）在**生
   Go 用 `xray balance add|list|remove`，两侧 `<host>.wsServers` 与
   `<host>.realityServers` 内容同形、删除后同时消失。
 - G15：`max_fails=2 fail_timeout=10` 被动摘除，OPS-32 双端 PASS
-  （`evidence/ops32-failover-0523/p2/OPS-32/ops.json`，ws 与 reality 两条上游均 PASS）：
+  （`evidence/ops32-measure-1115/p2/OPS-32/ops.json`，ws 与 reality 两条上游均 PASS；
+  旧 0523 证据按新 schema 回填，因探测在首个 A 提前停止，只保留 first-A 并标注
+  `recoveryWindow.stopReason=first-A (pre-revision evidence)`）：
+  - **测量口径**：恢复阶段跑满 60s/120 次，判定取 `stableRecovery`（A 持续被选中到
+    窗口末尾、相邻 A 间隔 ≤ `fail_timeout=10s`、链上至少 3 次 A）；
+    `firstRecoveryLatencySeconds` 只作参照，不能单独当恢复时间。
   - **ws 上游**：M4 / `--mode tls --transport ws` 安装后两侧各起 `backend-a:9001`、
     `backend-b:9002`，客户端经 Nginx TLS 打真实 `/ws` 流量；`kill -9` A 后 84 次请求
-    全部由 B 返回、零 5xx/零连接失败，每个 nginx worker 对 A 的失败尝试止于
-    `max_fails=2`，随后约 12s 不再尝试，重启 A 后重新出现 A。
+    全部由 B 返回、零 5xx/零连接失败。`perWorkerFails`：bash 10 个 worker 中 9 个达到
+    `max_fails=2`、1 个只有 1 次；Go 10/10 达到。静默区间 bash 8.6–12.6s、Go 6.3–12.3s；
+    重启后 stable 恢复 bash 13.6s、Go 24.8s（两侧 first-A 与 stable 相同）。
   - **reality 上游**：bash `1>1>5>1` / Go `--mode reality-balance --role primary` 安装后
     用同一组后端；客户端发真实 TLS 1.3 ClientHello（SNI 命中 `*.serverNames`）经 stream
     入口，标记后端回明文标记以标识实际对端；`kill -9` A 后 84 次连接全部到 B、
-    零连接失败（stream `proxy_next_upstream` 在 connect 失败时重试），摘除/恢复时间点
-    与 ws 同形。
+    零连接失败（stream `proxy_next_upstream` 在 connect 失败时重试）。
+    `perWorkerFails`：bash 9 个 worker 只有 4 个达到 `max_fails=2`（其余仅 1 次），
+    Go 10 个里 7 个达到。因此 first-A 是取样点而非全局恢复：bash first-A 3.96s、
+    stable 17.67s；Go first-A 与 stable 同为 19.36s。
+  - **per-worker 抖动区间**：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，
+    失败次数、摘除时刻与静默时长都逐 worker 不同（本轮静默跨度见
+    `perWorkerJitter.quietMin/quietMax/quietSpread`：reality 侧 1.2–12.5s、
+    ws 侧 6.3–12.6s，跨度 4–11s）；不存在全局统一静默窗，单次探测的 first-A
+    会随命中 worker 抖动。
   - **限制（不得外推）**：reality 侧的对端是普通 TCP 标记服务，不做 Reality 握手；
     本项只证明 nginx stream 的对端选择与被动摘除，不证明 Reality/VLESS 端到端会话。
-  - 注：upstream 无 `zone`，`max_fails` 计数按 worker 隔离，故不存在全局统一静默窗。
 - G16：TLS 域名/证书编辑**不自动重签**（与 bash 的显式差异，不属于 ED）：
   - `xray config edit --domain/--cert/--cert-key` 只改 Nginx 引用与 `jobs.json` 的
     `certDomain`/`certFile`/`certKeyFile`，**不发起任何 ACME 网络请求**；证书不覆盖新域名

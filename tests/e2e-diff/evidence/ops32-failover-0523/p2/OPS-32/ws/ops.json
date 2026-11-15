@@ -23,6 +23,8 @@
     "loopbackRemovedBy": "harness rm + systemctl reload nginx on both sides",
     "maxFails": 2,
     "recoveryPollSeconds": 60.0,
+    "recoveryProbe": "the recovery phase runs the whole window (120 probes every 0.5s); it does not stop at the first A",
+    "stableRecoveryRule": "a side counts as recovered only when A keeps being selected to the end of the complete window with no gap longer than 10s and at least 3 A responses",
     "upstreamCounters": "per nginx worker; the upstream has no shared zone, so each worker removes the peer on its own",
     "weight": 50
   },
@@ -334,7 +336,15 @@
       "suffix": "wsServers"
     }
   },
+  "firstRecoveryLatencySeconds": {
+    "bash": 22.548,
+    "go": 23.281
+  },
   "id": "OPS-32",
+  "lastAAt": {
+    "bash": "2026/11/14 21:25:22",
+    "go": "2026/11/14 21:26:07"
+  },
   "lastDeadAttemptAt": {
     "bash": "2026/11/14 21:24:58",
     "go": "2026/11/14 21:25:43"
@@ -345,7 +355,45 @@
     "bash": "nginx version: nginx/1.30.6",
     "go": "nginx version: nginx/1.30.6"
   },
-  "perWorkerFailures": {
+  "perWorkerFailSummary": {
+    "bash": {
+      "belowMaxFails": {},
+      "max": 2,
+      "min": 2,
+      "reachedMaxFails": [
+        "7209",
+        "7210",
+        "7211",
+        "7212",
+        "7213",
+        "7214",
+        "7215",
+        "7216",
+        "7218",
+        "7219"
+      ],
+      "workers": 10
+    },
+    "go": {
+      "belowMaxFails": {},
+      "max": 2,
+      "min": 2,
+      "reachedMaxFails": [
+        "543",
+        "544",
+        "545",
+        "546",
+        "547",
+        "548",
+        "549",
+        "550",
+        "551",
+        "552"
+      ],
+      "workers": 10
+    }
+  },
+  "perWorkerFails": {
     "bash": {
       "7209": 2,
       "7210": 2,
@@ -369,6 +417,18 @@
       "550": 2,
       "551": 2,
       "552": 2
+    }
+  },
+  "perWorkerJitter": {
+    "bash": {
+      "quietMax": 12.7,
+      "quietMin": 1.7,
+      "quietSpread": 11.0
+    },
+    "go": {
+      "quietMax": 12.9,
+      "quietMin": 0.9,
+      "quietSpread": 12.0
     }
   },
   "perWorkerQuietSeconds": {
@@ -402,9 +462,25 @@
     "bash": "2026/11/14 21:25:22",
     "go": "2026/11/14 21:26:07"
   },
-  "recoveryLatency": {
-    "bash": 22.548,
-    "go": 23.281
+  "recoveryFailuresAfterFirstA": {
+    "bash": 0,
+    "go": 0
+  },
+  "recoveryWindow": {
+    "bash": {
+      "capSeconds": 60.0,
+      "complete": false,
+      "expected": 120,
+      "requests": 43,
+      "stopReason": "first-A (pre-revision evidence)"
+    },
+    "go": {
+      "capSeconds": 60.0,
+      "complete": false,
+      "expected": 120,
+      "requests": 44,
+      "stopReason": "first-A (pre-revision evidence)"
+    }
   },
   "removedAt": {
     "bash": "2026/11/14 21:24:47",
@@ -414,7 +490,29 @@
     "bash": "2026/11/14 21:24:47 [error] 7210#0: *79 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: example.com, request: \"GET /6b3f78d550664?phase=outage-burst&seq=17 HTTP/2.0\", upstream: \"http://127.0.0.1:9001/6b3f78d550664?phase=outage-burst&seq=17\", host: \"example.com\"",
     "go": "2026/11/14 21:25:31 [error] 544#0: *120 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: example.com, request: \"GET /ray/?phase=outage-burst&seq=35 HTTP/2.0\", upstream: \"http://127.0.0.1:9001/ray/?phase=outage-burst&seq=35\", host: \"example.com\""
   },
+  "scenarioNote": {
+    "perWorkerJitter": "max_fails counters are per nginx worker (the upstream has no zone), so failure counts, removal instants and quiet stretches differ per worker. perWorkerJitter reports that spread; a single probe is one sample, not a global recovery time.",
+    "recovery": "first-A and stable-A are both recorded. The verdict uses stable-A; first-A is sampling bias when only some workers removed the peer."
+  },
   "sidesMatch": true,
+  "stableRecovery": {
+    "bash": {
+      "at": null,
+      "chainLength": 1,
+      "latencySeconds": null,
+      "observable": false,
+      "reached": false,
+      "rule": "A keeps being selected to the end of the window with no gap longer than 10s and at least 3 A responses in the chain"
+    },
+    "go": {
+      "at": null,
+      "chainLength": 1,
+      "latencySeconds": null,
+      "observable": false,
+      "reached": false,
+      "rule": "A keeps being selected to the end of the window with no gap longer than 10s and at least 3 A responses in the chain"
+    }
+  },
   "suffix": "wsServers",
   "verdict": "PASS",
   "warmup": {

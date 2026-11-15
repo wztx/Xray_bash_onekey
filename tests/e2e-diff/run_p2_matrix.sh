@@ -1058,6 +1058,9 @@ OPS32_STEADY="${E2E_OPS32_STEADY:-24}"
 OPS32_STEADY_INTERVAL="${E2E_OPS32_STEADY_INTERVAL:-0.5}"
 OPS32_RECOVERY="${E2E_OPS32_RECOVERY:-120}"
 OPS32_RECOVERY_INTERVAL="${E2E_OPS32_RECOVERY_INTERVAL:-0.5}"
+# Stable recovery: the trailing run of A must be at least this long. First-A
+# alone is a sampling point when only some workers removed the dead peer.
+OPS32_STABLE_MIN="${E2E_OPS32_STABLE_MIN:-3}"
 
 # ops32_state records one key per line so the verdict knows the wall-clock
 # boundaries of each phase without re-deriving them from the transcripts.
@@ -1185,8 +1188,10 @@ ops32_side() {
     docker exec "$server" curl -s --max-time 2 \
         "http://127.0.0.1:$OPS32_A_PORT/restart-check" \
         >"$out/backend-a-restart-check.txt" 2>&1
+    # Full window: do not stop at the first A. Stable-A is judged from the
+    # trailing run of this transcript, so early A responses stay in the data.
     ops32_probe "$server" "$DOMAIN" "$loc" probe-recovery.tsv recovery \
-        "$OPS32_RECOVERY" "$OPS32_RECOVERY_INTERVAL" A
+        "$OPS32_RECOVERY" "$OPS32_RECOVERY_INTERVAL"
     docker exec "$server" cat "$errlog" >"$out/error-after-recovery.log" 2>/dev/null
     docker exec "$server" systemctl is-active nginx >"$out/nginx-active.txt" 2>&1
     docker exec "$server" bash -c '/usr/local/nginx/sbin/nginx -v' \
@@ -1241,8 +1246,9 @@ ops32_reality_side() {
     else
         printf '<closed>\n' >"$out/backend-a-restart-check.txt"
     fi
+    # Full window: see ops32_side.
     ops32_reality_probe "$server" "$sni" probe-recovery.tsv recovery \
-        "$OPS32_RECOVERY" "$OPS32_RECOVERY_INTERVAL" A
+        "$OPS32_RECOVERY" "$OPS32_RECOVERY_INTERVAL"
     docker exec "$server" cat "$errlog" >"$out/error-after-recovery.log" 2>/dev/null
     docker exec "$server" systemctl is-active nginx >"$out/nginx-active.txt" 2>&1
     docker exec "$server" bash -c '/usr/local/nginx/sbin/nginx -v' \
@@ -1255,399 +1261,12 @@ ops32_reality_side() {
 
 ops32_verdict() {
     local base=$1 mode=$2 suffix=$3
-    python3 - "$base" "$mode" "$suffix" "$OPS32_A_HOST" "$OPS32_A_PORT" "$OPS32_B_HOST" \
-        "$OPS32_B_PORT" "$OPS32_WEIGHT" "$OPS32_RECOVERY" \
-        "$OPS32_RECOVERY_INTERVAL" <<'PY'
-import calendar
-import datetime
-import json
-import os
-import re
-import sys
-
-(base, mode, suffix, a_host, a_port, b_host, b_port, weight,
- recovery_count, recovery_interval) = sys.argv[1:11]
-a_port, b_port, weight = int(a_port), int(b_port), int(weight)
-recovery_cap = float(recovery_count) * float(recovery_interval)
-sides = ("bash", "go")
-max_fails = 2
-fail_timeout = 10
-
-
-def read_text(path):
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except OSError:
-        return None
-
-
-def read_rc(path):
-    raw = read_text(path)
-    if raw is None:
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError:
-        return None
-
-
-def read_state(path):
-    state = {}
-    for line in (read_text(path) or "").splitlines():
-        if "\t" not in line:
-            continue
-        key, value = line.split("\t", 1)
-        state[key] = value
-    return state
-
-
-def read_probe(path):
-    rows = []
-    for line in (read_text(path) or "").splitlines():
-        parts = line.split("\t")
-        if len(parts) < 6:
-            continue
-        try:
-            epoch = float(parts[0])
-        except ValueError:
-            continue
-        rows.append({
-            "epoch": epoch, "phase": parts[1], "seq": parts[2],
-            "rc": parts[3], "code": parts[4], "body": parts[5],
-        })
-    return rows
-
-
-def probe_stats(rows):
-    bodies = {}
-    fivexx = 0
-    failures = 0
-    for row in rows:
-        bodies[row["body"] or "<empty>"] = bodies.get(row["body"] or "<empty>", 0) + 1
-        code = row["code"]
-        if code.isdigit() and 500 <= int(code) < 600:
-            fivexx += 1
-        if row["rc"] != "0" or code in ("000", ""):
-            failures += 1
-    return {
-        "requests": len(rows),
-        "fivexx": fivexx,
-        "connectionFailures": failures,
-        "bodies": bodies,
-    }
-
-
-def snapshot(path):
-    text = read_text(path)
-    if text is None:
-        return None
-    files, cur = {}, None
-    for line in text.splitlines():
-        if line.startswith("== "):
-            cur = line[3:].strip()
-            files[cur] = []
-        elif cur is not None:
-            files[cur].append(line)
-    return {name: "\n".join(body).strip() for name, body in files.items()}
-
-
-def parse_ts(raw):
-    try:
-        return calendar.timegm(datetime.datetime.strptime(
-            raw, "%Y/%m/%d %H:%M:%S").timetuple())
-    except ValueError:
-        return None
-
-
-FAIL_RE = re.compile(
-    r'^(\d{4}/\d\d/\d\d \d\d:\d\d:\d\d) \[error\] (\d+)#\d+: \*\d+ '
-    r'connect\(\) failed \([^)]*\) while connecting to upstream,.*?'
-    r'upstream: "(?:https?://)?([^/"]+)')
-
-
-def dead_attempts(errlog, since):
-    """Failures that targeted backend A.
-
-    Nginx logs the resolved peer, not the upstream host name, so the peer is
-    identified by host:port. The worker pid is kept because max_fails counters
-    are per worker when the upstream has no shared zone.
-    """
-    out = []
-    for line in (errlog or "").splitlines():
-        match = FAIL_RE.match(line.strip())
-        if not match:
-            continue
-        host, _, port = match.group(3).rpartition(":")
-        if port != str(a_port):
-            continue
-        if host not in (a_host, "127.0.0.1", "localhost", "[::1]"):
-            continue
-        epoch = parse_ts(match.group(1))
-        if epoch is None or (since and epoch < since):
-            continue
-        out.append({
-            "at": match.group(1), "epoch": epoch,
-            "worker": match.group(2), "line": line.strip(),
-        })
-    return out
-
-
-def worker_violations(dead, window):
-    """No worker may exceed max_fails failures in any fail_timeout window."""
-    by_worker = {}
-    for entry in dead:
-        by_worker.setdefault(entry["worker"], []).append(entry["epoch"])
-    violations = []
-    for worker, epochs in by_worker.items():
-        epochs.sort()
-        for start in range(len(epochs)):
-            count = 1
-            for nxt in epochs[start + 1:]:
-                if nxt - epochs[start] < window:
-                    count += 1
-            if count > max_fails:
-                violations.append((worker, count))
-    return by_worker, violations
-
-
-report = {
-    "id": "OPS-32",
-    "name": "后端故障摘除",
-    "mode": mode,
-    "suffix": suffix,
-    "bothInstallRc": {},
-    "backends": {},
-    "configLine": {},
-    "warmup": {},
-    "duringOutage": {},
-    "deadAttempts": {},
-    "removedAt": {},
-    "recoveredAt": {},
-    "files": {},
-    "reasons": [],
-}
-harness, blockers = [], []
-per_side_ok = {}
-
-for side in sides:
-    d = os.path.join(base, side)
-    install_rc = read_rc(os.path.join(d, "install.rc"))
-    report["bothInstallRc"][side] = install_rc
-    state = read_state(os.path.join(d, "state.tsv"))
-    warmup = read_probe(os.path.join(d, "probe-warmup.tsv"))
-    outage = (read_probe(os.path.join(d, "probe-outage-burst.tsv")) +
-              read_probe(os.path.join(d, "probe-outage-steady.tsv")))
-    recovery = read_probe(os.path.join(d, "probe-recovery.tsv"))
-    errlog = read_text(os.path.join(d, "error-after-recovery.log"))
-    restart_check = (read_text(os.path.join(d, "backend-a-restart-check.txt")) or "").strip()
-    report.setdefault("backendRestartCheck", {})[side] = restart_check
-    report.setdefault("nginxVersion", {})[side] = (
-        read_text(os.path.join(d, "nginx-version.txt")) or "").strip()
-    if restart_check != "A":
-        harness.append("%s: restarted backend A did not answer its local "
-                       "probe (got %r)" % (side, restart_check))
-    files_add = snapshot(os.path.join(d, "files-after-add.txt"))
-    files_setup = snapshot(os.path.join(d, "servers-after-drop.txt"))
-    loc = (read_text(os.path.join(d, "location.txt")) or "").strip()
-
-    missing = []
-    if install_rc is None:
-        missing.append("install.rc")
-    if not state:
-        missing.append("state.tsv")
-    if not warmup:
-        missing.append("probe-warmup.tsv")
-    if not outage:
-        missing.append("probe-outage.tsv")
-    if not recovery:
-        missing.append("probe-recovery.tsv")
-    if errlog is None:
-        missing.append("error-after-recovery.log")
-    if not loc:
-        missing.append("location.txt")
-    if missing:
-        harness.append("%s: missing %s" % (side, ", ".join(missing)))
-        report["backends"][side] = []
-        per_side_ok[side] = False
-        continue
-
-    warm = probe_stats(warmup)
-    dur = probe_stats(outage)
-    report["warmup"][side] = warm
-    report["duringOutage"][side] = dur
-
-    since = None
-    if state.get("runStartUtc"):
-        since = parse_ts(state["runStartUtc"])
-    dead = dead_attempts(errlog, since)
-    report["deadAttempts"][side] = dead
-    with open(os.path.join(d, "dead-attempts.txt"), "w", encoding="utf-8") as fh:
-        for entry in dead:
-            fh.write("%s\n" % entry["line"])
-
-    by_worker, violations = worker_violations(dead, fail_timeout)
-    report.setdefault("perWorkerFailures", {})[side] = {
-        worker: len(epochs) for worker, epochs in sorted(by_worker.items())}
-    # Per-worker view of the removal: after a worker has seen max_fails
-    # failures it must leave the peer alone for fail_timeout. The observed
-    # quiet stretch runs from that failure either to the worker's next attempt
-    # or to the end of the outage probe.
-    outage_end = outage[-1]["epoch"]
-    quiet_by_worker = {}
-    removed_at = None
-    removed_line = None
-    for worker, epochs in sorted(by_worker.items()):
-        epochs = sorted(epochs)
-        if len(epochs) < max_fails:
-            continue
-        down_at = epochs[max_fails - 1]
-        nxt = epochs[max_fails] if len(epochs) > max_fails else None
-        quiet_by_worker[worker] = round((nxt if nxt else outage_end) - down_at, 1)
-        if removed_at is None or down_at < removed_at:
-            removed_at = down_at
-            removed_line = next(e["line"] for e in dead
-                                if e["epoch"] == down_at and e["worker"] == worker)
-    report.setdefault("perWorkerQuietSeconds", {})[side] = quiet_by_worker
-    report["removedAt"][side] = (
-        datetime.datetime.utcfromtimestamp(removed_at).strftime(
-            "%Y/%m/%d %H:%M:%S") if removed_at else None)
-    report.setdefault("removedAtBasis", {})[side] = removed_line
-    report.setdefault("lastDeadAttemptAt", {})[side] = (
-        dead[-1]["at"] if dead else None)
-    max_quiet = max(quiet_by_worker.values()) if quiet_by_worker else None
-
-    recovered = next((row for row in recovery if row["body"] == "A"), None)
-    report["recoveredAt"][side] = (
-        datetime.datetime.utcfromtimestamp(recovered["epoch"]).strftime(
-            "%Y/%m/%d %H:%M:%S") if recovered else None)
-    report.setdefault("recoveryLatency", {})[side] = (
-        round(recovered["epoch"] - float(state["restartReady"]), 3)
-        if recovered and state.get("restartReady") else None)
-
-    lines = []
-    loopback = "127.0.0.1.%s" % suffix
-    for name, body in (files_setup or {}).items():
-        if name != loopback:
-            lines.append("%s: %s" % (name, body.replace("\n", " ").strip()))
-    report["backends"][side] = sorted(lines)
-    config = next((body.strip() for name, body in (files_setup or {}).items()
-                   if name == "%s.%s" % (a_host, suffix)), "")
-    report["configLine"][side] = config
-    report["files"][side] = {
-        "dir": "/etc/idleleo/conf/nginx",
-        "suffix": suffix,
-        "created": sorted(files_add or {}),
-        "afterRemove": sorted(files_setup or {}),
-        "content": files_setup or {},
-        "loopbackFragment": (read_text(os.path.join(
-            d, "loopback-fragment.txt")) or "").strip(),
-        "location": loc,
-    }
-
-    problems = []
-    if install_rc != 0:
-        problems.append("%s: install rc=%s" % (side, install_rc))
-    if side == "bash":
-        add_rcs = [read_rc(os.path.join(d, "fm-add-%s.rc" % a_host)),
-                   read_rc(os.path.join(d, "fm-add-%s.rc" % b_host))]
-    else:
-        add_rcs = [read_rc(os.path.join(d, "add-%s.rc" % a_host)),
-                   read_rc(os.path.join(d, "add-%s.rc" % b_host))]
-    if add_rcs != [0, 0]:
-        harness.append("%s: balance add rc=%s (backend creation failed)"
-                       % (side, add_rcs))
-    if state.get("killFailed"):
-        problems.append("%s: backend A never went down" % side)
-    if state.get("restartFailed"):
-        problems.append("%s: backend A never came back" % side)
-    if warm["bodies"].get("A", 0) < 1 or warm["bodies"].get("B", 0) < 1:
-        problems.append("%s: warmup bodies=%s (both A and B required)"
-                        % (side, warm["bodies"]))
-    if warm["fivexx"] or warm["connectionFailures"]:
-        problems.append("%s: warmup had %d 5xx / %d connection failures"
-                        % (side, warm["fivexx"], warm["connectionFailures"]))
-    if dur["fivexx"] or dur["connectionFailures"]:
-        problems.append("%s: outage had %d 5xx / %d connection failures"
-                        % (side, dur["fivexx"], dur["connectionFailures"]))
-    if dur["bodies"].get("B", 0) != dur["requests"]:
-        problems.append("%s: outage bodies=%s, every request must come from %s"
-                        % (side, dur["bodies"], b_host))
-    if not dead:
-        problems.append("%s: no connect() failure to %s:%d in the error log; "
-                        "cannot prove passive removal"
-                        % (side, a_host, a_port))
-    if violations:
-        problems.append(
-            "%s: worker(s) %s exceeded max_fails=%d within fail_timeout=%ds; "
-            "the dead peer kept being tried"
-            % (side, ", ".join("%s=%dx" % v for v in violations),
-               max_fails, fail_timeout))
-    if not quiet_by_worker:
-        harness.append("%s: no worker reached max_fails=%d, not enough "
-                       "requests to observe removal" % (side, max_fails))
-    elif max_quiet is None or max_quiet < fail_timeout - 2:
-        problems.append(
-            "%s: best per-worker quiet stretch after removal is %ss "
-            "(fail_timeout=%ds)" % (side, max_quiet, fail_timeout))
-    if not recovered:
-        problems.append("%s: %s never answered again within %.0fs after "
-                        "restart" % (side, a_host, recovery_cap))
-    missing_fragments = [host for host in (a_host, b_host)
-                         if not (files_setup or {}).get("%s.%s" % (host, suffix), "").strip()]
-    if missing_fragments:
-        harness.append("%s: upstream fragments missing after setup: %s"
-                       % (side, ", ".join(missing_fragments)))
-    if loopback in (files_setup or {}):
-        harness.append("%s: loopback fragment still in the upstream" % side)
-    blockers.extend(problems)
-    per_side_ok[side] = not problems
-
-if harness:
-    verdict = "HARNESS-ERROR"
-    report["reasons"] = harness + blockers
-else:
-    if per_side_ok.get("bash") != per_side_ok.get("go"):
-        blockers.append("sides disagree: bash=%s go=%s" %
-                        (per_side_ok.get("bash"), per_side_ok.get("go")))
-    verdict = "BLOCKER" if blockers else "PASS"
-    report["reasons"] = blockers
-
-report["config"] = {
-    "maxFails": max_fails,
-    "failTimeout": fail_timeout,
-    "weight": weight,
-    "upstreamCounters": "per nginx worker; the upstream has no shared zone, so "
-                        "each worker removes the peer on its own",
-    "effectiveWeightDecay": "nginx also decays a failed peer's effective weight "
-                            "by weight/max_fails, so re-entry after "
-                            "fail_timeout ramps back in over a few requests",
-    "recoveryPollSeconds": recovery_cap,
-    "loopbackRemovedBy": "harness rm + systemctl reload nginx on both sides",
-}
-if mode == "stream":
-    # A Reality upstream is a raw TCP stream, not an HTTP upstream: there is no
-    # response status to count. The marker peers also answer in clear text, so
-    # the probe proves *which peer nginx dialled*, not a Reality handshake.
-    report["config"]["probe"] = (
-        "raw TLS 1.3 ClientHello with the configured SNI over the stream "
-        "listener; ssl_preread selects the reality upstream")
-    report["config"]["failureMetric"] = (
-        "connection failures (rc!=0 / empty reply) instead of HTTP 5xx")
-    report["limitations"] = [
-        "the marker peers do not implement the Reality handshake; this proves "
-        "nginx stream peer selection and passive removal, not an end-to-end "
-        "Reality/VLESS session",
-        "nginx retries on connect failure before any payload reaches the peer, "
-        "so a client-visible failure during the outage is a real blocker",
-    ]
-report["sidesMatch"] = per_side_ok.get("bash") == per_side_ok.get("go")
-report["verdict"] = verdict
-with open(os.path.join(base, "ops.json"), "w", encoding="utf-8") as fh:
-    json.dump(report, fh, indent=2, sort_keys=True)
-    fh.write("\n")
-print(verdict)
-PY
+    # The analyzer is a standalone driver so the same code recomputes evidence
+    # recorded by earlier runs instead of only applying to new runs.
+    python3 "$SUITE/drivers/ops32_analyze.py" \
+        "$base" "$mode" "$suffix" "$OPS32_A_HOST" "$OPS32_A_PORT" \
+        "$OPS32_B_HOST" "$OPS32_B_PORT" "$OPS32_WEIGHT" \
+        "$OPS32_RECOVERY" "$OPS32_RECOVERY_INTERVAL" "$OPS32_STABLE_MIN"
 }
 
 ops32_ws_job() {

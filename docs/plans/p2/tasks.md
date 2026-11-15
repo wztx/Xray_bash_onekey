@@ -190,12 +190,21 @@
   - 矩阵：OPS-09 由 `go-missing` 改为 `must-match`，新增 OPS-31 `must-match`；
     ED-001 从 `expected_diffs.json` 移除。
   - 故障摘除 OPS-32：`max_fails=2 fail_timeout=10` 被动摘除双端 PASS
-    （`evidence/ops32-failover-0523/p2/OPS-32/ops.json`，ws 与 reality 两条上游）：
+    （`evidence/ops32-measure-1115/p2/OPS-32/ops.json`，ws 与 reality 两条上游；
+    旧口径 `evidence/ops32-failover-0523/p2/OPS-32/ops.json` 已按新 schema 回填，
+    `recoveryWindow.stopReason=first-A (pre-revision evidence)`，只保留 first-A）。
+    - 测量口径：恢复探测跑满 `60s/120 次`，不再因首个 A 提前停止；判定用
+      `stableRecovery`（A 一直选到窗口末尾、相邻 A 间隔 ≤ `fail_timeout=10s`
+      且链上至少 3 次 A），`firstRecoveryLatencySeconds` 仅作参照。
     - ws：真实 TLS 流量打到 `backend-a:9001`/`backend-b:9002`，`kill -9` 一个后
-      84 次请求零 5xx、全由存活后端返回；每个 worker 的失败尝试止于 `max_fails=2`
-      并静默约 12s，重启后重新选中。
-    - reality：真实 TLS 1.3 ClientHello 经 stream 入口，84 次连接全到存活端、零连接失败；
-      标记后端只做 TCP 应答，故只证明 stream 选路与摘除，**不外推 Reality 握手**。
+      84 次请求零 5xx、全由存活后端返回；`perWorkerFails` 显示 10 个 worker 中
+      bash 9 个、Go 10 个达到 `max_fails=2`，静默区间 bash 8.6–12.6s、Go 6.3–12.3s；
+      重启后 stable 恢复 bash 13.6s、Go 24.8s（与 first-A 相同）。
+    - reality：真实 TLS 1.3 ClientHello 经 stream 入口，84 次连接全到存活端、零连接失败。
+      `perWorkerFails` 显示 bash 9 个 worker 只有 4 个达到 `max_fails=2`（其余仅 1 次），
+      Go 10 个里有 7 个，因此 first-A 只是取样点：bash first-A 3.96s → stable 17.67s，
+      Go first-A/stable 同为 19.36s。标记后端只做 TCP 应答，故只证明 stream 选路与摘除，
+      **不外推 Reality 握手**。
     - harness 在两侧删除安装自带的回环后端：`xray balance remove` 按设计拒绝删回环，
       没有对称的菜单入口；删除动作与原因记录在 `ops.json` 的 `loopbackRemovedBy`。
 - [x] S3 证书路径/域名（G16/G17）。

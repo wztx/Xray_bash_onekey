@@ -125,34 +125,63 @@ func obtainWithLego(ctx context.Context, client *lego.Client, domain string) (*c
 	})
 }
 
+// accountState keeps one account URL per ACME directory. Staging preflight and
+// production issuance use different CAs, so a single account URL is not enough.
+// The legacy flat shape is still readable for installs created before the move.
+type accountState struct {
+	DirectoryURL string            `json:"directoryUrl,omitempty"`
+	AccountURL   string            `json:"accountUrl,omitempty"`
+	Accounts     map[string]string `json:"accounts,omitempty"`
+}
+
 func readAccountURL(stateFile, directoryURL string) string {
-	if stateFile == "" {
-		return ""
+	st := loadAccountState(stateFile)
+	if st.Accounts != nil {
+		return st.Accounts[directoryURL]
 	}
-	raw, err := os.ReadFile(stateFile)
-	if err != nil {
-		return ""
+	if st.DirectoryURL == directoryURL {
+		return st.AccountURL
 	}
-	var st struct {
-		DirectoryURL string `json:"directoryUrl"`
-		AccountURL   string `json:"accountUrl"`
-	}
-	if json.Unmarshal(raw, &st) != nil || st.DirectoryURL != directoryURL {
-		return ""
-	}
-	return st.AccountURL
+	return ""
 }
 
 func writeAccountURL(stateFile, directoryURL, accountURL string) error {
 	if stateFile == "" {
 		return nil
 	}
-	st := map[string]string{"directoryUrl": directoryURL, "accountUrl": accountURL}
-	raw, _ := json.MarshalIndent(st, "", "  ")
+	st := loadAccountState(stateFile)
+	if st.Accounts == nil {
+		st.Accounts = map[string]string{}
+	}
+	if st.DirectoryURL != "" && st.AccountURL != "" {
+		st.Accounts[st.DirectoryURL] = st.AccountURL
+	}
+	st.Accounts[directoryURL] = accountURL
+	st.DirectoryURL = ""
+	st.AccountURL = ""
+	raw, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(stateFile), 0o700); err != nil {
 		return err
 	}
 	return os.WriteFile(stateFile, append(raw, '\n'), 0o600)
+}
+
+func loadAccountState(stateFile string) accountState {
+	var st accountState
+	if stateFile == "" {
+		return st
+	}
+	raw, err := os.ReadFile(stateFile)
+	if err != nil {
+		return st
+	}
+	if json.Unmarshal(raw, &st) != nil {
+		return accountState{}
+	}
+	return st
 }
 
 // compile-time guard: the adapter must keep satisfying lego's User interface.

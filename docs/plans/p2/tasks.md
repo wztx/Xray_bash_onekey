@@ -375,7 +375,7 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   `scope.json`，`report.py` 未跑记 `NOT-RUN` 并跳过基线对比，同侧缺证据仍报
   `HARNESS-ERROR`；`--self-test` 补局部跑正反两例，全量证据渲染与改动前逐字节一致。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
-- [ ] **G-3 契约执行器补到 28/28**（现 9：F01/F05/F11/F26/F27/F28 + F12/F14/F15）。
+- [ ] **G-3 契约执行器补到 28/28**（现 10：F01/F05/F11/F26/F27/F28 + F12/F14/F15/F22）。
   顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、
   F15（stats）、F22（rill status 只读面）、F25（TCP）、F16（block）、F19（metadata）、
   F23（uuid），再补剩余项。每个执行器按 `features/README.md` 契约：真实执行 Go
@@ -394,6 +394,15 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
     显式拒绝 exit 2、查询零写入；schedule `stats-collect` 写
     `schedule/stats.json`（0640）且 API down 时报告 failed。证据
     `tests/go-parity/evidence/f15-2026-11-16`（连跑两次均 56/56）。
+  - [x] F22：`F22_test.py` 54/54（absent/active/stale/installed-unobserved/
+    坏 config 五态 + 非 root 只读 + 未迁移子命令显式 exit 2）。同时修复
+    投影未读真实观察字段 `capturedAtEpochSeconds`（此前只认 mtime 与
+    `observedAt` 等），并补 `legacybridge` 单元测试。Bash 基线
+    `install.sh --rill-agent-status`（`RILL_XRAY_AGENT_MANAGER` 指向仓库内
+    manager）在 installed/mode 上与 Go 一致；空 root 上 Bash 会新建默认
+    config 并报 installed=true，且状态 JSON 不含观察新鲜度，差异记录在
+    `baseline-compare.json`。证据 `tests/go-parity/evidence/f22-2026-11-16`
+    （连跑两次均 54/54）。
 - [ ] **G-4 解 M8 HARNESS-BLOCKED**：查明 harness 缺口（两轮证据均未跑成），
   能修则修并补跑，不能修则在矩阵登记为长期 HARNESS-LIMITED 并附批准。
 - [ ] **G-5 C6 拍板**（见 T14 末项）：实施或关闭，不再挂着。

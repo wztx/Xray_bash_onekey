@@ -375,7 +375,7 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   `scope.json`，`report.py` 未跑记 `NOT-RUN` 并跳过基线对比，同侧缺证据仍报
   `HARNESS-ERROR`；`--self-test` 补局部跑正反两例，全量证据渲染与改动前逐字节一致。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
-- [ ] **G-3 契约执行器补到 28/28**（现 10：F01/F05/F11/F26/F27/F28 + F12/F14/F15/F22）。
+- [ ] **G-3 契约执行器补到 28/28**（现 11：F01/F05/F11/F26/F27/F28 + F12/F14/F15/F22/F25）。
   顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、
   F15（stats）、F22（rill status 只读面）、F25（TCP）、F16（block）、F19（metadata）、
   F23（uuid），再补剩余项。每个执行器按 `features/README.md` 契约：真实执行 Go
@@ -403,6 +403,15 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
     config 并报 installed=true，且状态 JSON 不含观察新鲜度，差异记录在
     `baseline-compare.json`。证据 `tests/go-parity/evidence/f22-2026-11-16`
     （连跑两次均 54/54）。
+  - [x] F25：`F25_test.py` 78/78（沙箱 `/proc/sys` 普通文件）。覆盖
+    status/plan 只读、`--confirm` 门禁、事务写入与幂等、正常/二次
+    rollback、漂移时 apply 与 rollback 均 exit 7 且删掉漂移后可恢复、
+    pending journal 阻塞与恢复、foreign/99- 冲突/symlink/未知 profile、
+    无 bbr 内核 exit 12、非 root 真实 root apply exit 6 与非 root 只读
+    status、真实内核不变；投毒 `curl/wget/tcp.sh` 的 PATH 证明从不调用。
+    Bash `-tcp` 只执行本地 `tcp.sh` 且已拒绝下载，无法作为等值基线，
+    差异记入 `baseline-absence.json`。证据
+    `tests/go-parity/evidence/f25-2026-11-16`（连跑两次均 78/78）。
 - [ ] **G-4 解 M8 HARNESS-BLOCKED**：查明 harness 缺口（两轮证据均未跑成），
   能修则修并补跑，不能修则在矩阵登记为长期 HARNESS-LIMITED 并附批准。
 - [ ] **G-5 C6 拍板**（见 T14 末项）：实施或关闭，不再挂着。

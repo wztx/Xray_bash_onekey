@@ -22,3 +22,16 @@
 6.2.1.2  # ASN.1 object identifier misread as IPv4 in vendored go-jose
 6.2.2.1  # ASN.1 object identifier misread as IPv4 in vendored go-jose
 ::D  # ASCII diagram fragment matched as IPv6 in vendored miekg/dns README
+11.0.0.2  # test-driver fixture address; not a host
+8.8.4.4  # Google public DNS resolver in sample configs
+149.112.112.112  # Quad9 public DNS resolver in sample configs
+208.67.220.220  # OpenDNS public resolver in sample configs
+223.5.5.5  # AliDNS public resolver in sample configs
+20.205.243.166  # GitHub address recorded by install logs
+91.189.91.104  # Ubuntu archive mirror address recorded by install logs
+104.16.179.112  # Cloudflare CDN address recorded by install logs
+104.16.180.112  # Cloudflare CDN address recorded by install logs
+185.199.108.133  # GitHub Pages CDN address recorded by release-check logs
+185.199.109.133  # GitHub Pages CDN address recorded by release-check logs
+185.199.110.133  # GitHub Pages CDN address recorded by release-check logs
+185.199.111.133  # GitHub Pages CDN address recorded by release-check logs

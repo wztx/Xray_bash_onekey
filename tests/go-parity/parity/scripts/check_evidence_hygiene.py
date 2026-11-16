@@ -32,9 +32,11 @@ IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 IPV6_RE = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
 HOST_RE = re.compile(
     # A leading path segment such as .../root/usr is repository-relative, not a
-    # host home, so the slash must not follow an identifier character.
+    # host home, so the slash must not follow an identifier character. Trailing
+    # punctuation and regex alternation bars are excluded so prose such as
+    # "(under /root/.acme.sh), which" and source code patterns do not match.
     r"(?<![A-Za-z0-9_.\-])(?:" + re.escape(_USERS) + "|" + re.escape(_HOMES)
-    + "|" + re.escape(_ROOTS) + r")[^/\s\"'`<>]+"
+    + "|" + re.escape(_ROOTS) + r")[^/\s\"'`<>),;|]+"
 )
 
 NON_PUBLIC_V4 = [ipaddress.ip_network(n) for n in (
@@ -129,11 +131,25 @@ def scan_file(display, text, allow):
     return [finding for finding in findings if finding[2] not in allow]
 
 
+def mask(value):
+    """Hide the sensitive part so public CI logs do not repeat the leak."""
+    if value.startswith("/") or re.match(r"^[A-Za-z]:[\\/]", value):
+        return re.sub(r"(/(?:Users|home|root)/)[^/]+", r"\1<redacted>", value)
+    if ":" in value:
+        return value.split(":")[0] + ":***"
+    parts = value.split(".")
+    if len(parts) == 4:
+        return f"{parts[0]}.***.***.{parts[-1]}"
+    return value[:2] + "***"
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("roots", nargs="+", help="files or directories to scan")
     parser.add_argument("--allowlist", default=str(Path(__file__).with_name(
         "evidence_hygiene_allowlist.txt")))
+    parser.add_argument("--mask", action="store_true",
+                        help="mask values in the report (use in public CI)")
     args = parser.parse_args(argv)
 
     allow = load_allowlist(Path(args.allowlist))
@@ -159,7 +175,8 @@ def main(argv):
             findings.extend(scan_file(str(path), text, allow))
 
     for path, lineno, value, rule in findings:
-        print(f"{path}:{lineno}: {value} ({rule})")
+        shown = mask(value) if args.mask else value
+        print(f"{path}:{lineno}: {shown} ({rule})")
     print(f"hygiene: {len(findings)} finding(s) in {scanned} file(s)")
     return 1 if findings else 0
 

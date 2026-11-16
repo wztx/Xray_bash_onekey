@@ -2,6 +2,33 @@
 
 前置：`docs/plans/p2/spec.md` 的差异清单 G1–G11 与 D1–D9 按新口径执行（Go 对齐 bash，
 真做不到才保留差异并附证据）。不动 `install.sh`；不静默删除安全闸。
+（2026-11-16 校正：证书对齐轮改动过 `install.sh`/`scripts/ssl_update.sh` 的证书路径，
+属于 S4/S5 证书专项，不算破坏此约束；P2 生成/安装/编辑链路仍未动 install.sh。）
+
+## 2026-11-16 计划审计
+
+对照代码逐项复核本计划与 `docs/go/FUNCTION_PARITY.md`、S6/S7 计划后的真实状态：
+
+**与代码一致（维持勾选）**：T0–T7、T9–T14 全部完成，证据链完整（M1–M7/M9/M10 双侧
+两轮、E1–E8、OPS-09/19/21/22/31/32 均有实证）。
+
+**计划缺陷（本次修正）**：
+1. 计划只覆盖「diff 对齐」，没有给**发布门禁收口**排期：28 项功能契约至今全部
+   `PENDING_GO_IMPLEMENTATION`（执行器 6/28），这才是合并前的真正临界路径。新增 P2-G。
+2. T8 收尾提交跨期未清：2026-11-16 证书对齐轮（acme/lego/cli/schedule/install.sh/
+   ssl_update.sh + 测试文档）仍未提交，挂在 T8 下统一处理。
+3. M8 在 T7/T14 证据里两次 HARNESS-BLOCKED，但从未立任务。并入 P2-G。
+4. E2E 局部跑误导性矩阵（待办区）危害是伪证据，优先级应高于一般待办。并入 P2-G。
+5. C6 「续期缺口未解决前不实现」的前置条件实际已消解：webroot HTTP-01 续期链路
+   （含用户自备证书不接管语义）已落地，C6 现在缺的是产品拍板而非技术缺口。
+   加决策检查点，不再无限期挂着。
+6. 周边计划文档过时：`docs/go/S6_S7_PLAN_2026-11-11.md` 中「schedule cert-renew 只做
+   监控」「CLI 无 speedtest 命令」等描述与代码不符，已在原文加校正注记；
+   `tests/go-parity/parity/features/README.md` 「故意没有 F01–F28」与已有 6 个执行器矛盾，已改。
+
+**不受本计划控制但要记录的外部项**：真实公网 CA 终验（环境缺公网入口，授权降级为
+staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 到期复核
+（`expires=2027-03-31`）挂在 release 门槛。
 
 ## T0 差异清单
 
@@ -70,6 +97,9 @@
 ## T8 提交与汇报
 
 - [ ] 按主题拆 commit：差异清单+spec、Go 生成逻辑、relay 安装、重复安装/别名、矩阵+驱动+runner。
+- [ ] 证书对齐轮（2026-11-16，未提交）单独成组：acme 核心与权限契约、CLI/调度与
+  Bash 对齐（install.sh/ssl_update.sh）、测试与文档（DECISIONS D-024、FUNCTION_PARITY
+  F12 证据回填）三个 commit。
 - [ ] 汇报：差异清单分类、每项改法与验证、矩阵前后对比、仍保留的能力缺口。
 
 ## T9 G8 relay 文件集合（安装落地）
@@ -298,7 +328,11 @@
   单用户回改后 B 旧链接恢复。多 inbound 的原子性与 dry-run 预览由单测
   `TestSetUserUUIDUpdatesEveryInboundAtomically` 等覆盖（E2E 安装只含一个 inbound）。
   输出明确写“会重启、所有会话秒级中断”，dry-run 同样列出 inbound/老 UUID。
-- [ ] C6 direct TLS 支持（规格已出：`docs/plans/p2/spec-c6-direct-tls.md`，续期缺口未解决前不实现）。
+- [ ] C6 direct TLS 支持（规格已出：`docs/plans/p2/spec-c6-direct-tls.md`）。
+  2026-11-16 校正：原前置「续期缺口未解决前不实现」已消解——webroot HTTP-01 续期链路
+  落地（schedule 续期、`.user-managed` 不接管语义、`--takeover` 显式接管），一期
+  「不接管续期」方案已无技术阻塞。**剩余为产品拍板**：做则按 spec 分阶段实施；
+  不做则显式关闭本项并从验收清单移除。检查点：P2-G 完成前给出结论。
 - 规则：每项单独提交；发现「照 bash 做反而降低安全性」先停并上报。
 
 ## 待办（未排期，不要在当前批次顺手改）
@@ -329,9 +363,33 @@
   - 影响面：`tests/e2e-diff/run_p2_matrix.sh`、`run_p1_smoke.sh`、`compare/report.py`
     （`--self-test` 需补「局部跑」一例），以及历史 `evidence/*/p2/install-matrix.md` 的可读性。
 
+# P2-G 发布门禁收口（2026-11-16 新增，合并前唯一临界路径）
+
+按此顺序执行，完成标准是 `tests/go-parity/parity/cases/feature_contracts.json`
+28 项全部脱离 `PENDING_GO_IMPLEMENTATION` 且 `FUNCTION_PARITY.md` 有正式签收证据。
+
+- [ ] **G-1 提交与证据回填**（T8 收尾）：证书对齐轮三个 commit；F12 迁移备注补
+  staging 预检、`/etc/idleleo/acme` 账户迁移、`0640/0750 root:idleleo-nginx` 契约、
+  `.user-managed`/`.managed-by-idleleo`、`--dry-run`、回滚含 uid/gid 证据
+  （`tests/go-parity/evidence/` 下挂运行记录）。
+- [ ] **G-2 修 E2E 局部跑伪证据**（见「待办」区详述）：runner 写 `scope.json`、
+  report.py 只渲染实跑格子，未跑记 `NOT-RUN`；`--self-test` 补局部跑用例。
+  理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
+- [ ] **G-3 契约执行器补到 28/28**（现 6：F01/F05/F11/F26/F27/F28）。
+  顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、
+  F15（stats）、F22（rill status 只读面）、F25（TCP）、F16（block）、F19（metadata）、
+  F23（uuid），再补剩余项。每个执行器按 `features/README.md` 契约：真实执行 Go
+  新代码、对比固定 Bash 基线、安全差异附批准记录。
+- [ ] **G-4 解 M8 HARNESS-BLOCKED**：查明 harness 缺口（两轮证据均未跑成），
+  能修则修并补跑，不能修则在矩阵登记为长期 HARNESS-LIMITED 并附批准。
+- [ ] **G-5 C6 拍板**（见 T14 末项）：实施或关闭，不再挂着。
+- [ ] **G-6 验收**：`check_release_gate.py` rc=0；本地/CI 两套跑法口径一致
+  （矩阵不许出现局部跑伪证据）；`FUNCTION_PARITY.md` 28 项全部有正式签收行。
+
 # Task Dependencies
 
 - T2/T3/T4 可并行，T7 依赖 T2–T6，T8 依赖 T7。
 - T5 依赖 T7 的 M4 证据，结论可能回写 spec。
 - T9–T11 按序独立验收；T12 依赖 T9–T11 完成。
 - T13 依赖 T7；T14 依赖 T13（OPS 待办来源）。
+- P2-G 内部按 G-1→G-2→G-3→G-6 串行，G-4/G-5 可与 G-3 并行；T8 并入 G-1。

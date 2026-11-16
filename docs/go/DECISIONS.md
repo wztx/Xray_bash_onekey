@@ -458,3 +458,35 @@ Reality 身份换掉了”。拒绝必须发生在任何写盘之前；显式开
 **影响**：真实 root 下的 `nginx -V`、自启、卸载保留策略、symlink 证书与并发
 行为仍需 Block 3 验证；在此之前不得对外宣称与 Bash 完全等价。
 
+## D-024 证书生命周期对齐 acme.sh 与 Bash 契约（2026-11-16）
+
+**背景**：Bash 只把 acme.sh 当 webroot HTTP-01 客户端：staging 试签后再正式
+签发，`--installcert` 后由 reloadcmd 执行 `chown root:idleleo-nginx` +
+`chmod 640`，账户状态留在 `~/.acme.sh`。Go 原生路径此前直接生产签发，续期后
+把证书重置为 `0644/0600 root:root`，且账户私钥放在证书目录内，与 Bash 的
+分层权限模型冲突。
+
+**决定**：
+- `cert issue --production` 默认先做 staging 预检（`--no-staging-check` 可关，
+  显式 `--directory` 自动跳过），预检不落盘、不执行 reload。
+- 签发与续期落盘后统一执行权限收尾：存在 `idleleo-nginx` 组时证书目录
+  `0750`、证书与私钥 `0640 root:idleleo-nginx`；否则保持 `0644/0600`。
+  权限失败回滚到旧证书并恢复其原权限位。
+- ACME 账户状态从 `<cert dir>/acme` 迁到 `/etc/idleleo/acme`（`0700`），
+  兼容读取旧路径；迁移遇到非 `account.key/account.json` 条目时 fail-closed。
+- 账户 KID 按 CA directory 分开保存，staging 与 production 互不覆盖。
+- 用户自备证书以 `<cert dir>/.user-managed` 标记；安装器在“沿用已有证书且本机
+  无签发记录”（无 `.managed-by-idleleo` 且无 acme.sh 域名状态）时写入，原生
+  `cert issue/renew` 与 `ssl_update.sh` 均拒绝覆盖，需显式 `--takeover` 才
+  接管。原生签发成功后写入 `.managed-by-idleleo` 并清除 `.user-managed`；只有
+  reload 成功后才记录归属，reload 失败回滚时不会丢掉用户标记。
+- 回滚快照同时保存旧证书对的 uid/gid，失败回滚后仍保持
+  `root:idleleo-nginx 0640`，避免 nginx worker 失去读权限。
+- 账户状态迁移会把目标目录收紧到 `0700 root:root`、`account.key/json` 收紧到
+  `0600 root:root`，避免从证书目录继承组可读权限。
+- 新增 `cert renew --dry-run`，只读输出到期时间、续期点、挑战方式与 reload
+  配置。
+
+**影响**：安装路径每次首次签发会多一次 staging 往返；这是有意用时间换生产
+额度安全。`idleleo-nginx` 不存在的主机（纯 Xray）不进入分层权限分支。
+

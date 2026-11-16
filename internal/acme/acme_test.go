@@ -11,7 +11,9 @@ import (
 	"encoding/pem"
 	"math/big"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -142,13 +144,13 @@ func TestReloadFailureRestoresPreviousPair(t *testing.T) {
 	}
 
 	// Simulate a successful install of a new pair, then a reload that fails.
-	oldCert, oldKey, hadCert, hadKey := readPair(certPath, keyPath)
+	old := snapshotPair(certPath, keyPath)
 	newChain, newKeyDER := testPair(t, 2, "new.example.com")
 	if err := replacePair(certPath, keyPath, newChain, newKeyDER); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Config{CertFile: certPath, KeyFile: keyPath, ReloadCommand: "exit 1"}
-	err = reloadOrRestore(context.Background(), cfg, oldCert, oldKey, hadCert, hadKey)
+	err = reloadOrRestore(context.Background(), cfg, old)
 	if err == nil || !strings.Contains(err.Error(), "previous pair restored") {
 		t.Fatalf("reload failure = %v, want a previous-pair-restored error", err)
 	}
@@ -220,5 +222,178 @@ func TestIsAccountMissing(t *testing.T) {
 	}
 	if isAccountMissing(&legoacme.ProblemDetails{Type: "urn:ietf:params:acme:error:badNonce"}) {
 		t.Fatal("badNonce must not be treated as a missing account")
+	}
+}
+
+func TestApplyPairPermissionsLayered(t *testing.T) {
+	g, err := user.LookupGroupId(strconv.Itoa(os.Getgid()))
+	if err != nil {
+		t.Skipf("lookup current group: %v", err)
+	}
+	dir := t.TempDir()
+	// A non-managed directory must keep its own mode (0755) instead of being
+	// tightened to 0750 by the certificate permission pass.
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	certPath := filepath.Join(dir, "cert.pem")
+	keyPath := filepath.Join(dir, "key.pem")
+	chain, keyDER := testPair(t, 1, "example.com")
+	if err := replacePair(certPath, keyPath, chain, keyDER); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyPairPermissions(certPath, keyPath, g.Name); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]os.FileMode{dir: 0o755, certPath: 0o640, keyPath: 0o640}
+	for path, mode := range want {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != mode {
+			t.Fatalf("%s mode = %o, want %o", path, info.Mode().Perm(), mode)
+		}
+	}
+}
+
+func TestUserManagedCertificateIsNotOverwritten(t *testing.T) {
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "xray.crt")
+	keyPath := filepath.Join(dir, "xray.key")
+	if err := MarkUserManaged(certPath); err != nil {
+		t.Fatal(err)
+	}
+	if !IsUserManaged(certPath) {
+		t.Fatal("marker was not created")
+	}
+	cfg := Config{
+		DirectoryURL: StagingDirectory,
+		Domain:       "example.com",
+		Webroot:      dir,
+		CertFile:     certPath,
+		KeyFile:      keyPath,
+	}
+	if _, err := Issue(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "user-managed") {
+		t.Fatalf("Issue on a user-managed certificate = %v, want refusal", err)
+	}
+	res, err := Renew(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Skipped || !strings.Contains(res.Reason, "user-managed") {
+		t.Fatalf("Renew = %+v, want a user-managed skip", res)
+	}
+}
+
+func TestMigrateLegacyAccountMovesState(t *testing.T) {
+	root := t.TempDir()
+	certDir := filepath.Join(root, "etc", "idleleo", "cert")
+	legacy := filepath.Join(certDir, "acme")
+	if err := os.MkdirAll(legacy, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the Bash layered pass: the legacy account key was group-readable
+	// inside the certificate tree.
+	if err := os.WriteFile(filepath.Join(legacy, "account.key"), []byte("key"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "account.json"), []byte("{}"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	accountDir := filepath.Join(root, "etc", "idleleo", "acme")
+	// A pre-existing, too-open target directory must be tightened as well.
+	if err := os.MkdirAll(accountDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		CertFile:       filepath.Join(certDir, "xray.crt"),
+		AccountKeyFile: filepath.Join(accountDir, "account.key"),
+		StateFile:      filepath.Join(accountDir, "account.json"),
+	}
+	if err := migrateLegacyAccount(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"account.key", "account.json"} {
+		info, err := os.Stat(filepath.Join(accountDir, name))
+		if err != nil {
+			t.Fatalf("%s not migrated: %v", name, err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %o, want 0600", name, info.Mode().Perm())
+		}
+	}
+	if info, err := os.Stat(accountDir); err != nil {
+		t.Fatal(err)
+	} else if info.Mode().Perm() != 0o700 {
+		t.Fatalf("account dir mode = %o, want 0700", info.Mode().Perm())
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("legacy account directory still exists: %v", err)
+	}
+}
+
+func TestMarkManagedWritesOwnershipMarker(t *testing.T) {
+	certPath := filepath.Join(t.TempDir(), "xray.crt")
+	if err := markManaged(certPath, ""); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(ManagedMarker(certPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("marker mode = %o, want 0644", info.Mode().Perm())
+	}
+	if IsUserManaged(certPath) {
+		t.Fatal("managed marker must not read as user-managed")
+	}
+}
+
+func TestMigrateLegacyAccountRefusesUnexpectedEntries(t *testing.T) {
+	root := t.TempDir()
+	legacy := filepath.Join(root, "cert", "acme")
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "notes.txt"), []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := migrateLegacyAccount(Config{
+		CertFile:       filepath.Join(root, "cert", "xray.crt"),
+		AccountKeyFile: filepath.Join(root, "acme", "account.key"),
+		StateFile:      filepath.Join(root, "acme", "account.json"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "unexpected entry") {
+		t.Fatalf("migration = %v, want a refusal", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(legacy, "notes.txt")); statErr != nil {
+		t.Fatal("refused migration must leave the source untouched")
+	}
+}
+
+func TestAccountStateKeepsOneURLPerDirectory(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "account.json")
+	if err := writeAccountURL(stateFile, StagingDirectory, "https://staging/acct/1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAccountURL(stateFile, ProductionDirectory, "https://prod/acct/2"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readAccountURL(stateFile, StagingDirectory); got != "https://staging/acct/1" {
+		t.Fatalf("staging KID=%q", got)
+	}
+	if got := readAccountURL(stateFile, ProductionDirectory); got != "https://prod/acct/2" {
+		t.Fatalf("production KID=%q", got)
+	}
+}
+
+func TestInspectReportsMissingCertificate(t *testing.T) {
+	ins, err := Inspect(filepath.Join(t.TempDir(), "absent.crt"), 720*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ins.Missing || !ins.Due {
+		t.Fatalf("inspection = %+v, want missing+due", ins)
 	}
 }

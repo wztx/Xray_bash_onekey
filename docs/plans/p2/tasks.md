@@ -346,7 +346,7 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   核对结果：`docs/plans/p2/spec.md` 没有 C2 段落（原文只在 tasks 里提），因此无可改；
   C2 方案落在新文档 `spec-c2-routing-block.md`。
 
-- [ ] **E2E 局部跑（`E2E_ONLY`）会生成一张「局部跑却覆盖全场景」的误导性 `install-matrix.md`。**
+- [x] **E2E 局部跑（`E2E_ONLY`）会生成一张「局部跑却覆盖全场景」的误导性 `install-matrix.md`。**
   - 现象：`E2E_ONLY="E1,E4" bash tests/e2e-diff/run_p2_matrix.sh` 只跑编辑场景，但
     `compare/report.py` 仍按 `matrix.json` 的全量场景渲染矩阵；未跑的 M1–M10（以及未跑的
     那一侧）没有证据目录，被 report.py 判为「missing evidence」→ **HARNESS-ERROR**。
@@ -354,14 +354,13 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   - 危害：这是伪证据。后来人翻 `evidence/<run-id>/p2/install-matrix.md` 会把它当成真实
     失败证据：轻则误判 Go/bash 回归，重则把真实回归淹没在这片噪声里，或者反过来被当成
     「已知 HARNESS 问题」而放过。
-  - 可能修法（任选其一，倾向第一种）：
-    1. runner 把本次实跑范围写进证据目录（如 `scope.json`，列出实际执行的 `场景/侧`），
-       `report.py` 读到 scope 时**只渲染实跑过的格子**，未跑的留 `—`/`not run`，
-       不进 BLOCKER / HARNESS-ERROR 统计；无 `scope.json` 的历史证据保持现有全量语义。
-    2. 更轻的做法：`E2E_ONLY` 非空时，矩阵标题与首行显式标注 `PARTIAL RUN: E1,E4`，
-       未跑场景归入新类别 `NOT-RUN`，与 HARNESS-ERROR 分开统计。
-  - 影响面：`tests/e2e-diff/run_p2_matrix.sh`、`run_p1_smoke.sh`、`compare/report.py`
-    （`--self-test` 需补「局部跑」一例），以及历史 `evidence/*/p2/install-matrix.md` 的可读性。
+  - 已修（2026-11-16）：runner 在报告前写 `scope.json`（`runId`/`only`/实跑的
+    installs·edits·ops/两侧），`report.py` 仅在 `only` 非空时启用 scope：未跑场景与
+    `E3`–`E8` 记 `NOT-RUN`、不再参与 BLOCKER/HARNESS-ERROR 统计；局部跑跳过基线与
+    三步改动对比并加首行标注；同侧缺证据仍判 `HARNESS-ERROR`（不能借局部跑藏缺口）；
+    无 `scope.json` 的历史证据与全量跑语义逐字节不变（对 `final-full2-8863b10` 做过
+    改动前后渲染 diff）。`--self-test` 增补局部跑正反两例。`run_p1_smoke.sh` 不渲染
+    矩阵，无需改动。
 
 # P2-G 发布门禁收口（2026-11-16 新增，合并前唯一临界路径）
 
@@ -372,8 +371,9 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   staging 预检、`/etc/idleleo/acme` 账户迁移、`0640/0750 root:idleleo-nginx` 契约、
   `.user-managed`/`.managed-by-idleleo`、`--dry-run`、回滚含 uid/gid 证据
   （`tests/go-parity/evidence/cert-contract-2026-11-16`，单元 + CLI 探测级）。
-- [ ] **G-2 修 E2E 局部跑伪证据**（见「待办」区详述）：runner 写 `scope.json`、
-  report.py 只渲染实跑格子，未跑记 `NOT-RUN`；`--self-test` 补局部跑用例。
+- [x] **G-2 修 E2E 局部跑伪证据**（见「待办」区详述）：`run_p2_matrix.sh` 写
+  `scope.json`，`report.py` 未跑记 `NOT-RUN` 并跳过基线对比，同侧缺证据仍报
+  `HARNESS-ERROR`；`--self-test` 补局部跑正反两例，全量证据渲染与改动前逐字节一致。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
 - [ ] **G-3 契约执行器补到 28/28**（现 6：F01/F05/F11/F26/F27/F28）。
   顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、

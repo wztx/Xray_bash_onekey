@@ -1697,6 +1697,28 @@ if (( ${#OIDS[@]} > 0 )); then
     done
 fi
 
+# Record what this run actually executed. report.py treats a non-empty `only`
+# as a partial run and renders everything outside this scope as NOT-RUN, so an
+# E2E_ONLY subset can never be mistaken for a full-matrix verdict later.
+SCOPE_INSTALLS="$(IFS=,; printf '%s' "${SIDS[*]-}")"
+SCOPE_EDITS="$(IFS=,; printf '%s' "${EIDS[*]-}")"
+SCOPE_OPS="$(IFS=,; printf '%s' "${OIDS[*]-}")"
+python3 - "$EVID/scope.json" "$RUN_ID" "$ONLY" \
+    "$SCOPE_INSTALLS" "$SCOPE_EDITS" "$SCOPE_OPS" <<'PY'
+import json
+import sys
+
+out, run_id, only, installs, edits, ops = sys.argv[1:7]
+split = lambda text: [item for item in text.split(",") if item]
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump({"runId": run_id, "only": only,
+               "installs": split(installs), "edits": split(edits),
+               "ops": split(ops), "sides": ["bash", "go"]},
+              fh, ensure_ascii=False, indent=2, sort_keys=True)
+    fh.write("\n")
+PY
+log "scope: installs=[$SCOPE_INSTALLS] edits=[$SCOPE_EDITS] ops=[$SCOPE_OPS]"
+
 BASELINE="${E2E_BASELINE:-$SUITE/evidence/clean-run01-d5f17dc/p2}"
 BASELINE_ARGS=()
 [[ -d "$BASELINE" ]] && BASELINE_ARGS=(--baseline "$BASELINE")

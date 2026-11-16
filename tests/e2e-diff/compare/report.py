@@ -10,6 +10,9 @@ Classification per scenario:
   BLOCKER            install/L4/idempotency failure or an unregistered layout diff.
   HARNESS-ERROR      driver rc=124 / HARNESS-ERROR marker / missing evidence.
   HARNESS-BLOCKED    scenario explicitly ineligible (M8 ACME).
+  NOT-RUN            the run's scope.json proves the scenario/side was never
+                     executed (E2E_ONLY partial run). Evidence from before
+                     scope.json existed keeps the old full-matrix semantics.
 
 L1 comparison is layout-level: full path sets are compared, then grouped by
 top-level root so the report stays readable. L2 semantic field diffing is not
@@ -22,6 +25,10 @@ import os
 import sys
 
 LAYERS = ("L0", "L1", "L2", "L3", "L4", "L5", "L6")
+
+# SCOPE is the current run's executed scope (from <evidence>/scope.json), or
+# None for evidence written before scope.json existed.
+SCOPE = None
 
 
 def read_json(path, default=None):
@@ -38,6 +45,36 @@ def read_text(path):
             return fh.read()
     except OSError:
         return ""
+
+
+def load_scope(evidence):
+    """Returns the executed scope, or None when this evidence predates it.
+
+    A partial run leaves no directory for scenarios it never touched, so
+    "missing evidence" alone cannot distinguish "not executed" from "harness
+    broke". scope.json is written by the runner and is the only authority.
+    """
+    data = read_json(os.path.join(evidence, "scope.json"))
+    if not isinstance(data, dict):
+        return None
+    # A full run (no E2E_ONLY) keeps the historical semantics: missing evidence
+    # is a harness error, not "not executed". Only partial runs opt into scope.
+    if not str(data.get("only") or "").strip():
+        return None
+    scope = {}
+    for key in ("installs", "edits", "ops"):
+        value = data.get(key)
+        if isinstance(value, list):
+            scope[key] = set(str(item) for item in value)
+    if not scope:
+        return None
+    return scope
+
+
+def in_scope(key, item):
+    if SCOPE is None or key not in SCOPE:
+        return True
+    return item in SCOPE[key]
 
 
 def install_rc(side_dir):
@@ -218,6 +255,10 @@ def render_edits(evidence, matrix):
     sha_notes = []
     for entry in entries:
         eid = entry["id"]
+        if not in_scope("edits", eid):
+            lines.append("| %s %s | — | — | — | — / — | **NOT-RUN** | 未在本轮 scope 内 |" % (
+                eid, entry.get("name", "")))
+            continue
         base = os.path.join(evidence, eid, "go")
         checks = read_json(os.path.join(base, "edit", "checks.json"), {})
         before = read_json(os.path.join(base, "edit", "L4-before", "connectivity.json"), {})
@@ -481,12 +522,23 @@ def render_ops(evidence, matrix):
 
 def render(evidence, matrix, entries, baseline=None):
     scenarios = matrix.get("install", [])
+    global SCOPE
+    SCOPE = load_scope(evidence)
     lines = []
     lines.append("# P2 install matrix — %s" % os.path.basename(evidence.rstrip("/")))
     lines.append("")
     lines.append("Generated %s. Round 1 is primary; round 2 is the idempotency round." %
                  datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     lines.append("")
+    if SCOPE is not None:
+        ran = []
+        for key, label in (("installs", "安装"), ("edits", "编辑"), ("ops", "OPS")):
+            items = sorted(SCOPE.get(key, set()))
+            if items:
+                ran.append("%s %s" % (label, "/".join(items)))
+        lines.append("> 局部跑（scope.json）：本轮只执行 %s；未跑场景记 NOT-RUN，"
+                     "不计入阻塞，也不得作为全量通过的证据。" % ("；".join(ran) or "-"))
+        lines.append("")
     lines.append("| 场景 | bash rc / L4r1 / L4r2 / rc2 / L6 | go rc / L4r1 / L4r2 / rc2 / L6 | 判定 | 说明 |")
     lines.append("|---|---|---|---|---|")
     details = []
@@ -508,9 +560,17 @@ def render(evidence, matrix, entries, baseline=None):
                 side["rc2"] if side["rc2"] is not None else "-",
                 ("ok" if idem.get("ok") else "fail") if idem else "-")
 
-        verdict, reasons = verdict_for(scenario, bash, go, entries)
+        in_run = in_scope("installs", sid)
+        if in_run:
+            verdict, reasons = verdict_for(scenario, bash, go, entries)
+            bash_cell, go_cell = fmt(bash), fmt(go)
+        else:
+            # Not executed. Never let a partial run inherit MATCH or report a
+            # missing-evidence harness error for a scenario it never touched.
+            verdict, reasons = "NOT-RUN", ["未在本轮 scope 内（E2E_ONLY 局部跑）"]
+            bash_cell = go_cell = "—"
         lines.append("| %s %s | %s | %s | **%s** | %s |" % (
-            sid, scenario.get("name", ""), fmt(bash), fmt(go), verdict,
+            sid, scenario.get("name", ""), bash_cell, go_cell, verdict,
             "; ".join(reasons).replace("|", "/")))
         details.append((sid, scenario, bash, go, verdict, reasons))
 
@@ -585,8 +645,14 @@ def render(evidence, matrix, entries, baseline=None):
                  "发布前须完成到期复核。")
     lines.append("")
     lines.extend(render_edits(evidence, matrix))
-    lines.extend(render_baseline(evidence, baseline, matrix, entries))
-    lines.extend(render_step_changes(evidence, baseline))
+    if SCOPE is not None:
+        lines.append("## 与基线对比")
+        lines.append("")
+        lines.append("本轮为局部跑，跳过基线与三步改动对比，避免把未跑场景渲染成变化。")
+        lines.append("")
+    else:
+        lines.extend(render_baseline(evidence, baseline, matrix, entries))
+        lines.extend(render_step_changes(evidence, baseline))
     lines.append("## 未覆盖/未验证")
     lines.append("")
     lines.append("- M8（ACME）：`eligible:false`，按计划记 HARNESS-BLOCKED。")
@@ -690,6 +756,33 @@ def self_test():
         assert "**PASS**" in text and "10.99.0.7.wsServers" in text, text
         assert "bash: 10.99.0.7:9447 weight=60" in text and \
             "go: 10.99.0.7:9447 weight=60" in text, text
+        # guardrail 5: a partial run marks unexecuted scenarios NOT-RUN, while an
+        # in-scope scenario with no evidence is still a harness error.
+        with tempfile.TemporaryDirectory() as tmp2:
+            for side in ("bash", "go"):
+                dump(tmp2, "M1/%s/install.rc" % side, "0")
+                dump(tmp2, "M1/%s/L4/ws/connectivity.json" % side, {"ok": True})
+                dump(tmp2, "M1/%s/manifest.json" % side,
+                     {"entries": [{"path": "/etc/idleleo/conf/xray/config.json",
+                                   "sha256": "x"}]})
+            matrixp = {"install": [
+                {"id": "M1", "name": "t", "eligible": True,
+                 "go": {"argv": ["x"], "verified": True}},
+                {"id": "M2", "name": "t2", "eligible": True}]}
+            dump(tmp2, "scope.json", {"only": "M1", "installs": ["M1"],
+                                      "edits": [], "ops": [], "sides": ["bash", "go"]})
+            EVID = tmp2
+            text = render(tmp2, matrixp, [])
+            assert "**MATCH**" in text, text
+            assert "M2" in text and "**NOT-RUN**" in text, text
+            assert "missing evidence" not in text and "HARNESS-ERROR" not in text, text
+            dump(tmp2, "scope.json", {"only": "M1,M2", "installs": ["M1", "M2"],
+                                      "edits": [], "ops": [], "sides": ["bash", "go"]})
+            # In scope but only one side produced evidence: still a harness gap,
+            # never a NOT-RUN, so a broken side cannot hide behind a partial run.
+            dump(tmp2, "M2/bash/install.rc", "0")
+            text = render(tmp2, matrixp, [])
+            assert "HARNESS-ERROR" in text and "missing evidence" in text, text
     print("self-test ok")
 
 

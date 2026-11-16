@@ -375,7 +375,7 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   `scope.json`，`report.py` 未跑记 `NOT-RUN` 并跳过基线对比，同侧缺证据仍报
   `HARNESS-ERROR`；`--self-test` 补局部跑正反两例，全量证据渲染与改动前逐字节一致。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
-- [ ] **G-3 契约执行器补到 28/28**（现 8：F01/F05/F11/F26/F27/F28 + F12/F14）。
+- [ ] **G-3 契约执行器补到 28/28**（现 9：F01/F05/F11/F26/F27/F28 + F12/F14/F15）。
   顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、
   F15（stats）、F22（rill status 只读面）、F25（TCP）、F16（block）、F19（metadata）、
   F23（uuid），再补剩余项。每个执行器按 `features/README.md` 契约：真实执行 Go
@@ -385,7 +385,15 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
     `tests/go-parity/evidence/f12-2026-11-16`（连跑两次均全绿）。
   - [x] F14：`F14_test.py` 62/62，签名 manifest、apply/回滚/降级、schedule timer
     与定时真实升级；证据 `tests/go-parity/evidence/f14-2026-11-16`。
-  - [ ] F15：`--stats --json` 与 Bash stats 基线对比。
+  - [x] F15：`F15_test.py` 56/56（真实 Xray 26.11.9 StatsService + HTTP 代理入站
+    产生 64 KiB 流量）。Go `stats --json` 原样透传与 Bash `xray_stats.sh --json`
+    归一化结果在同一实时计数器上逐值一致（tag 集合、上行/下行/合计、server）；
+    另断言 `--pattern`、非 root exit 5（Bash 同为 5）、API down exit 8
+    （Bash 基线 2，差异记录在 `exit-code-divergence.json`）、缺配置/坏 JSON/
+    缺 api.listen exit 3、坏参数与路径穿越 exit 2、`--watch/--reset/--yes`
+    显式拒绝 exit 2、查询零写入；schedule `stats-collect` 写
+    `schedule/stats.json`（0640）且 API down 时报告 failed。证据
+    `tests/go-parity/evidence/f15-2026-11-16`（连跑两次均 56/56）。
 - [ ] **G-4 解 M8 HARNESS-BLOCKED**：查明 harness 缺口（两轮证据均未跑成），
   能修则修并补跑，不能修则在矩阵登记为长期 HARNESS-LIMITED 并附批准。
 - [ ] **G-5 C6 拍板**（见 T14 末项）：实施或关闭，不再挂着。

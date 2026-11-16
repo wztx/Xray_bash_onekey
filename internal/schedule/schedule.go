@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -773,6 +774,32 @@ func certRenewJob(ctx context.Context, root string, cfg Config, at string) JobRe
 			"refusing to reload a certificate whose private key is world-readable: "+strings.Join(obs.InsecureKey, "; "))
 	}
 
+	// A user-supplied certificate is renewed by whatever issued it. Keep
+	// watching for manual replacement so services still reload, but never
+	// overwrite it with a native ACME order.
+	if acme.IsUserManaged(path(root, cfg.CertFile)) {
+		reload := ""
+		if root == "/" && changed {
+			var rerr error
+			reload, rerr = reloadServices(ctx, root)
+			if rerr != nil {
+				return certFailure(ctx, root, cfg, at, "user-managed certificate changed; "+rerr.Error())
+			}
+		}
+		detail := fmt.Sprintf("%s is user-managed (sha256=%s); renewal is external", obs.Name, short(obs.Fingerprint))
+		if reload != "" {
+			detail += "; " + reload
+		}
+		detail += fmt.Sprintf("; expires in %d days", days)
+		if err := saveCertState(root, obs, at); err != nil {
+			detail += "; state: " + err.Error()
+		}
+		if err := ClearAlert(root, "cert-renew"); err != nil {
+			detail += "; alert not cleared: " + err.Error()
+		}
+		return JobResult{Job: "cert-renew", Result: "ok", At: at, Detail: detail}
+	}
+
 	// Inside the renewal window the scheduler must renew, not just report.
 	if time.Until(obs.NotAfter) < CertRenewWindow {
 		if cfg.CertDomain == "" {
@@ -780,8 +807,9 @@ func certRenewJob(ctx context.Context, root string, cfg Config, at string) JobRe
 				"%s expires in %d days; certDomain is not configured; run 'idleleo schedule install --cert-domain <domain>'",
 				obs.Name, days))
 		}
-		certRel := cfg.CertFile
-		acmeDir := filepath.Dir(certRel)
+		// Account state lives beside the certificate tree, never inside it:
+		// <base>/etc/idleleo/acme for <base>/etc/idleleo/cert/xray.crt.
+		acmeDir := filepath.Dir(filepath.Dir(cfg.CertFile))
 		spec := acme.Config{
 			DirectoryURL:   cfg.ACMEDirectory,
 			Email:          cfg.ACMEEmail,
@@ -792,6 +820,7 @@ func certRenewJob(ctx context.Context, root string, cfg Config, at string) JobRe
 			AccountKeyFile: path(root, filepath.ToSlash(filepath.Join(acmeDir, "acme", "account.key"))),
 			StateFile:      path(root, filepath.ToSlash(filepath.Join(acmeDir, "acme", "account.json"))),
 			RenewBefore:    CertRenewWindow,
+			CertGroup:      managedCertGroup(path(root, cfg.CertFile)),
 		}
 		res, rerr := renewCertificate(ctx, spec)
 		if rerr != nil {
@@ -880,6 +909,20 @@ func short(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// managedCertGroup returns the nginx worker group when this host uses the
+// layered certificate permission model, and empty for a pure Xray install or a
+// certificate stored outside the managed directory.
+func managedCertGroup(certFile string) string {
+	if filepath.Clean(filepath.Dir(certFile)) != acme.ManagedCertDir {
+		return ""
+	}
+	const group = "idleleo-nginx"
+	if _, err := user.LookupGroup(group); err != nil {
+		return ""
+	}
+	return group
 }
 
 func geodataJob(ctx context.Context, root string, cfg Config, at string) JobResult {

@@ -145,11 +145,11 @@ var commandFlags = map[string]flagSpec{
 		[]string{"inbound", "sandbox", "validator", "service", "uuid", "email", "new-uuid", "path", "fault"},
 		"container", "dry-run"),
 	"xray cert issue": specOf(
-		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-key", "state", "renew-before", "ca-cert", "email", "reload-command"},
-		"production", "insecure-skip-verify", "force"),
+		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-dir", "account-key", "state", "cert-group", "renew-before", "ca-cert", "email", "reload-command"},
+		"production", "insecure-skip-verify", "no-staging-check", "takeover", "force"),
 	"xray cert renew": specOf(
-		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-key", "state", "renew-before", "ca-cert", "email", "reload-command"},
-		"production", "insecure-skip-verify", "force"),
+		[]string{"domain", "webroot", "cert-out", "key-out", "directory", "account-dir", "account-key", "state", "cert-group", "renew-before", "ca-cert", "email", "reload-command"},
+		"production", "insecure-skip-verify", "takeover", "force", "dry-run"),
 
 	"bridge audit":      specOf(nil, "summary"),
 	"bridge prepare":    specOf([]string{"candidate", "candidate-manifest", "recovery", "fault"}, "acknowledge-custom", "container"),

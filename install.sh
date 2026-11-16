@@ -8150,6 +8150,8 @@ acme() {
             --key-out "${ssl_chainpath}/xray.key" \
             "${_dir_args[@]}" \
             "${_email_args[@]}" \
+            --cert-group "${_cert_group}" \
+            --takeover \
             --force \
             --reload-command "${_reloadcmd}"; then
             log_echo "${Error} ${RedBG} SSL $(gettext "证书生成") $(gettext "失败") ${Font}"
@@ -9235,6 +9237,18 @@ assert_cert_renewal_scheduler() {
     log_echo "${OK} ${GreenBG} $(gettext "证书续期断言通过") ${Font}: ${entries}"
 }
 
+# True when there is evidence that this manager issued the installed pair: the
+# native ownership marker or the legacy acme.sh domain state. Without either,
+# a kept pair was supplied by the operator and must not be renewed natively.
+cert_has_manager_ownership() {
+    [[ -f "${ssl_chainpath}/.managed-by-idleleo" ]] && return 0
+    if acme_legacy_enabled &&
+        [[ -f "$HOME/.acme.sh/${domain}_ecc/${domain}.cer" ]]; then
+        return 0
+    fi
+    return 1
+}
+
 check_cert_status() {
     if [[ ${tls_mode} == "TLS" ]]; then
         host="$(info_extraction host)"
@@ -9299,6 +9313,12 @@ cert_update_manuel() {
     if [[ ${tls_mode} != "TLS" ]]; then
         log_echo "${Error} ${RedBG} $(gettext "当前模式不支持此操作")! ${Font}"
         return 1
+    fi
+    # A user-managed certificate is renewed by its issuer. Refuse here instead
+    # of silently adopting it: taking it over would replace the operator's pair.
+    if [[ -f "${ssl_chainpath}/.user-managed" ]]; then
+        log_echo "${Warning} ${YellowBG} $(gettext "检测到用户自备证书, 已跳过自动续签; 请通过原签发方式更新") ${Font}"
+        return 0
     fi
 
     # Every precondition is checked before a service is stopped, so a missing
@@ -9368,6 +9388,7 @@ cert_update_manuel() {
         --cert-out "${ssl_chainpath}/xray.crt" \
         --key-out "${ssl_chainpath}/xray.key" \
         "${_dir_args[@]}" \
+        --cert-group "${_cert_group}" \
         --reload-command "${_reloadcmd}"; then
         log_echo "${Error} ${RedBG} $(gettext "证书续签失败")! ${Font}"
         _rc=1
@@ -12799,10 +12820,26 @@ install_xray_ws_tls() {
     # before expiry. A kept certificate is only reported: the operator may own
     # its renewal elsewhere.
     if [[ "${cert_issued_this_run}" == "yes" ]]; then
+        rm -f "${ssl_chainpath}/.user-managed"
         assert_cert_renewal_scheduler || return 1
+    elif [[ -f "${ssl_chainpath}/xray.crt" && -f "${ssl_chainpath}/xray.key" ]] &&
+        ! cert_has_manager_ownership; then
+        # The pair was kept and nothing records this manager as its issuer, so
+        # it is operator-supplied. Mark it before the scheduler runs, otherwise
+        # the native renewal would overwrite it inside the 30-day window.
+        local _user_cert_group
+        _user_cert_group="$(get_nginx_worker_group 2>/dev/null || true)"
+        [[ -n "${_user_cert_group}" ]] || _user_cert_group="idleleo-nginx"
+        printf 'managed-by=user\ncreated=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${ssl_chainpath}/.user-managed" || true
+        chown -f "root:${_user_cert_group}" "${ssl_chainpath}/.user-managed" 2>/dev/null || true
+        chmod -f 640 "${ssl_chainpath}/.user-managed" 2>/dev/null || true
+        log_echo "${Warning} ${YellowBG} $(gettext "检测到用户自备证书, 已标记; 安装器与原生续期都不会覆盖该证书") ${Font}"
+        log_echo "${Info} ${Green} $(gettext "如需由本管理器签发与续期, 重新安装 TLS 并选择不保留现有证书") ${Font}"
     else
         if ! assert_cert_renewal_scheduler; then
             log_echo "${Warning} ${YellowBG} $(gettext "本次沿用已有证书, 安装器不强制接管其续期; 请确认到期前会有人续期") ${Font}"
+        else
+            rm -f "${ssl_chainpath}/.user-managed"
         fi
     fi
     # The native schedule only replaces the external updater once the service

@@ -174,6 +174,11 @@ restore_nginx_state() {
 }
 
 renew_and_install_cert() {
+    # A user-supplied certificate is renewed elsewhere; never overwrite it.
+    if [[ -f "${ssl_chainpath}/.user-managed" ]]; then
+        ssl_log "Certificate is marked user-managed; skipping renewal"
+        return 0
+    fi
     if [[ "${acme_legacy}" == "1" ]]; then
         if ! "${acme_sh_dir}/acme.sh" --cron --home "${acme_sh_dir}" >/dev/null 2>&1; then
             ssl_log "acme.sh cron renewal failed"
@@ -190,6 +195,7 @@ renew_and_install_cert() {
         --webroot "${idleleo_dir}/conf" \
         --cert-out "${ssl_chainpath}/xray.crt" \
         --key-out "${ssl_chainpath}/xray.key" \
+        --cert-group "${cert_group}" \
         "${acme_dir_args[@]}"; then
         ssl_log "idleleo xray cert renew failed for ${host}"
         return 1
@@ -234,6 +240,15 @@ restart_services_after_renewal() {
             rc=1
         else
             nginx_stopped="no"
+        fi
+    elif [[ "${acme_legacy}" != "1" && -f "${nginx_systemd_file}" ]] &&
+        systemctl is-active --quiet nginx >/dev/null 2>&1; then
+        # The legacy path reloads Nginx through acme.sh's stored reloadcmd. The
+        # native path has no such hook, so without this reload Nginx would keep
+        # serving the superseded certificate until its next manual restart.
+        if ! systemctl reload nginx >/dev/null 2>&1; then
+            ssl_log "Nginx reload failed after SSL update"
+            rc=1
         fi
     fi
     return "${rc}"

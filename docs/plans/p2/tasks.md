@@ -375,7 +375,7 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   `scope.json`，`report.py` 未跑记 `NOT-RUN` 并跳过基线对比，同侧缺证据仍报
   `HARNESS-ERROR`；`--self-test` 补局部跑正反两例，全量证据渲染与改动前逐字节一致。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
-- [ ] **G-3 契约执行器补到 28/28**（现 7：F01/F05/F11/F26/F27/F28 + F12）。
+- [ ] **G-3 契约执行器补到 28/28**（现 8：F01/F05/F11/F26/F27/F28 + F12/F14）。
   顺序按「证据已厚、只差写执行器」优先：F12（证书，本轮刚补证）、F14（update）、
   F15（stats）、F22（rill status 只读面）、F25（TCP）、F16（block）、F19（metadata）、
   F23（uuid），再补剩余项。每个执行器按 `features/README.md` 契约：真实执行 Go
@@ -383,7 +383,9 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
   - [x] F12：`F12_test.py` 在 `idleleo-preview:latest` 内 72/72，含夹具内本地 ACME
     CA（ACME_LOCAL_CA）、权限/回滚/迁移/schedule 替换重载；证据
     `tests/go-parity/evidence/f12-2026-11-16`（连跑两次均全绿）。
-  - [ ] F14：`--auto-update` 与 schedule 的 Bash 基线对比。
+  - [x] F14：`F14_test.py` 62/62，签名 manifest、apply/回滚/降级、schedule timer
+    与定时真实升级；证据 `tests/go-parity/evidence/f14-2026-11-16`。
+  - [ ] F15：`--stats --json` 与 Bash stats 基线对比。
 - [ ] **G-4 解 M8 HARNESS-BLOCKED**：查明 harness 缺口（两轮证据均未跑成），
   能修则修并补跑，不能修则在矩阵登记为长期 HARNESS-LIMITED 并附批准。
 - [ ] **G-5 C6 拍板**（见 T14 末项）：实施或关闭，不再挂着。

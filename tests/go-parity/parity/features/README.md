@@ -1,7 +1,7 @@
 # 正式 Go 业务验收夹具
 
 > 2026-11-16 校正：原文「故意没有 `F01_test.py` 到 `F28_test.py`」已过时——本目录现有
-> 7 个真实执行器（F01/F05/F11/F12/F26/F27/F28）与 `fixture_support.py`，其余 21 项仍缺。
+> 8 个真实执行器（F01/F05/F11/F12/F14/F26/F27/F28）与 `fixture_support.py`，其余 20 项仍缺。
 > 执行器补到 28/28 的排期见 `docs/plans/p2/tasks.md` P2-G（G-3）。
 
 当前 Go 尚未完成 28 项业务签收（`feature_contracts.json` 仍全部

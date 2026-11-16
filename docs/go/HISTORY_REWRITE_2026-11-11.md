@@ -190,3 +190,16 @@ merge-base 保持 `6f291fa6`（`main` 与 `develop/go-native` 的共享祖先未
 - 旧提交 `4851375` 的 Windows 用户名仍只通过 `refs/pull/114..116` 可达。
 - 已确认放弃向 GitHub Support 追清理，改为依赖 8.4 的防护不再产生新的泄露。
 - 结论口径不变：**不能声称“已彻底清除”**，只能说“分支历史已重写，后续写入受 CI 拦截”。
+
+### 8.6 提交元数据（2026-11-16）
+
+深度检查发现：974 个远端可达提交中有 784 个带真实姓名与个人邮箱
+（`33997505+hello-yunshu@users.noreply.github.com`、`33997505+paniy@…`、`hello-yunshu@…`）。全量重写会改变
+所有 SHA 并打断 `main` 的 ruleset 与 3 处 baseline pin，且 `refs/pull/*` 里的旧邮箱
+依然删不掉，因此按“不改 SHA”处理：
+
+- 仓库级 `git config` 改为 `云云朮 <33997505+hello-yunshu@users.noreply.github.com>`，
+  新提交不再带个人邮箱；
+- 根目录新增 `.mailmap`，把上述邮箱统一显示为项目身份（813 个提交）；第三方贡献者
+  （`武子`、`robinspt`）与自动化账号保持原样；
+- 历史提交对象本身未改写，GitHub 页面仍按原始对象显示作者；pull ref 中的旧邮箱同理。

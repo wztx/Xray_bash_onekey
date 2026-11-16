@@ -135,3 +135,58 @@ Tag（15 个，全部已强推）：
 4. 处置建议：
    - 向 GitHub Support 提交清理不可达对象缓存（含 pull refs）的请求；
    - 如后续发现真实凭据（本轮未发现），一律轮换，不要依赖历史重写。
+
+## 8. 2026-11-16 二次清理（分支级重写 + 源头防护）
+
+### 8.1 起因
+
+11-11 的重写只覆盖了当时存在的历史。11-13 至 11-15 新采集的 e2e 证据把真实主机地址
+重新带进了 `develop/go-native`，且已推到公开仓库。清理前扫描结果：556 处命中 / 159 个文件
+（公网 IPv4 294 处、公网 IPv6 196 处、主机家目录 66 处），`main` 干净。
+
+### 8.2 处理方式
+
+只重写 `develop/go-native` 相对 `main` 的增量，不触碰已发布历史：
+
+```
+git filter-repo --replace-text <rules> --refs origin/main..develop/go-native --force
+```
+
+沿用 11-11 的占位值（`203.0.113.42` / `2001:db8::42` / `/Users/<user>`），本轮新出现的
+第二个真实 IPv6 顺延为 `2001:db8::43`。重写范围 194 个提交，
+merge-base 保持 `6f291fa6`（`main` 与 `develop/go-native` 的共享祖先未变），因此对
+`main` 的合并关系、已合并 PR 和已发布 tag 都没有影响。
+
+- 备份（仓库外，未上传）：本地分支 `backup/pre-privacy-20261116`、
+  `~/.cache/xray-privacy-backup-20261116.bundle`（23 MB）、
+  `~/.cache/xray-worktree-20261116.patch`（当次未提交改动的补丁）。
+- 旧 tip `c4cbac9a` → 新 tip `bf8f7638`（`bf8f7638` 含防护提交）。
+- 强推使用 `--force-with-lease` 指定旧 tip，避免覆盖他人推送。
+
+### 8.3 验收
+
+| 检查 | 结果 |
+|---|---|
+| 重写范围内逐提交 `git grep`（3 个旧值 + 家目录） | 0 命中（194 提交） |
+| 工作树 `check_evidence_hygiene.py` | 0 命中 / 9214 文件 |
+| 远端 `origin/develop/go-native` | tip `bf8f7638`，merge-base 仍为 `6f291fa6` |
+
+### 8.4 本轮新增的防护
+
+1. `.github/workflows/privacy-guard.yml`：每次 push / PR 运行
+   `check_evidence_hygiene.py --mask .`，命中即失败；`--mask` 保证公开 CI 日志不回显真实值。
+2. `tests/go-parity/parity/scripts/check_evidence_hygiene.py`：
+   - 新增 `--mask`，只输出脱敏后的命中位置；
+   - 修正路径规则，不再把 `(under /root/.acme.sh),`、源码里的 `/Users/|` 正则误报为家目录。
+3. `evidence_hygiene_allowlist.txt`：补齐公共 DNS、GitHub / Cloudflare / Ubuntu 镜像地址
+   并逐条写明理由，使检查只报真实泄露。
+4. `tests/e2e-diff/collect/sanitize.py`：采集时即把非白名单公网地址映射为
+   `203.0.113.x` / `2001:db8::x`，家目录映射为 `/Users/<user>`，从源头阻断再次引入。
+
+### 8.5 仍然存在的残留
+
+- 8.1 中的值在此前已公开存在约 3 天，且已进入 `refs/pull/*` 可达的旧对象；
+  重写无法删除 pull refs（`DELETE` 返回 422，仓库侧只读）。
+- 旧提交 `4851375` 的 Windows 用户名仍只通过 `refs/pull/114..116` 可达。
+- 已确认放弃向 GitHub Support 追清理，改为依赖 8.4 的防护不再产生新的泄露。
+- 结论口径不变：**不能声称“已彻底清除”**，只能说“分支历史已重写，后续写入受 CI 拦截”。

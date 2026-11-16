@@ -16,7 +16,7 @@
 1. 计划只覆盖「diff 对齐」，没有给**发布门禁收口**排期：28 项功能契约至今全部
    `PENDING_GO_IMPLEMENTATION`（执行器 6/28），这才是合并前的真正临界路径。新增 P2-G。
 2. T8 收尾提交跨期未清：2026-11-16 证书对齐轮（acme/lego/cli/schedule/install.sh/
-   ssl_update.sh + 测试文档）仍未提交，挂在 T8 下统一处理。
+   ssl_update.sh + 测试文档）已按三组提交（`7022c09c`/`69dba27f`/`2ea4c8ae`）。
 3. M8 在 T7/T14 证据里两次 HARNESS-BLOCKED，但从未立任务。并入 P2-G。
 4. E2E 局部跑误导性矩阵（待办区）危害是伪证据，优先级应高于一般待办。并入 P2-G。
 5. C6 「续期缺口未解决前不实现」的前置条件实际已消解：webroot HTTP-01 续期链路
@@ -97,9 +97,9 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
 ## T8 提交与汇报
 
 - [ ] 按主题拆 commit：差异清单+spec、Go 生成逻辑、relay 安装、重复安装/别名、矩阵+驱动+runner。
-- [ ] 证书对齐轮（2026-11-16，未提交）单独成组：acme 核心与权限契约、CLI/调度与
+- [x] 证书对齐轮（2026-11-16）单独成组：acme 核心与权限契约、CLI/调度与
   Bash 对齐（install.sh/ssl_update.sh）、测试与文档（DECISIONS D-024、FUNCTION_PARITY
-  F12 证据回填）三个 commit。
+  F12 证据回填）三个 commit：`7022c09c` / `69dba27f` / `2ea4c8ae`。
 - [ ] 汇报：差异清单分类、每项改法与验证、矩阵前后对比、仍保留的能力缺口。
 
 ## T9 G8 relay 文件集合（安装落地）
@@ -368,10 +368,10 @@ staging 预检）；S0 公开仓库历史清理仍等 GitHub Support；ED-005 �
 按此顺序执行，完成标准是 `tests/go-parity/parity/cases/feature_contracts.json`
 28 项全部脱离 `PENDING_GO_IMPLEMENTATION` 且 `FUNCTION_PARITY.md` 有正式签收证据。
 
-- [ ] **G-1 提交与证据回填**（T8 收尾）：证书对齐轮三个 commit；F12 迁移备注补
+- [x] **G-1 提交与证据回填**（T8 收尾）：证书对齐轮三个 commit；F12 迁移备注补
   staging 预检、`/etc/idleleo/acme` 账户迁移、`0640/0750 root:idleleo-nginx` 契约、
   `.user-managed`/`.managed-by-idleleo`、`--dry-run`、回滚含 uid/gid 证据
-  （`tests/go-parity/evidence/` 下挂运行记录）。
+  （`tests/go-parity/evidence/cert-contract-2026-11-16`，单元 + CLI 探测级）。
 - [ ] **G-2 修 E2E 局部跑伪证据**（见「待办」区详述）：runner 写 `scope.json`、
   report.py 只渲染实跑格子，未跑记 `NOT-RUN`；`--self-test` 补局部跑用例。
   理由：后续 G-3 每一项签收都要跑 E2E，不先修会让每轮证据都带噪声。
